@@ -6,8 +6,4 @@ Author: Trinh Quoc Anh and Do Quang Dat
 Imports:
     data.table,
     bnlearn,
-    Rgraphviz,
-    parallel,
-    stringi,
-    visNetwork, 
-    dplyr
+    parallel

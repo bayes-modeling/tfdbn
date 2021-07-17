@@ -1,0 +1,59 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+
+```
+
+## Test preprocess data
+```{r}
+library(tfdbn)
+data_path = "data/report_sample_small2.csv"
+
+data <- read.csv(data_path)
+type <- "discrete"
+index_column <- "MST"
+time_column <- "NAM"
+time_values <- 2017:2019
+continuous_kpi_names <- paste("K_C_V0", 1:9, sep = "")
+continuous_static_kpi_names <- c("TUOI", "VON")
+discrete_static_kpi_names <- c("NGANHKT")
+current_layers = 3
+desire_layers = 2
+quantile_number = 3
+
+head(data)
+
+preprocessed <- preprocess_report_data(data, type, index_column, time_column, time_values,
+                       continuous_kpi_names, continuous_static_kpi_names, 
+                       discrete_static_kpi_names, current_layers, desire_layers, quantile_number)
+
+```
+
+```{r}
+library(tfdbn)
+continuous_data <- preprocessed$discrete
+desire_layers <- preprocessed$desire_layers
+quantile_number <- preprocessed$quantile_number
+continuous_dynamic_variables <- preprocessed$continuous_dynamic_variables
+continuous_static_variables <- preprocessed$continuous_static_variables
+discrete_static_variables <- preprocessed$discrete_static_variables
+known_structure <- NULL
+corr_threshold <- 0.4
+is_blacklist_internal <- TRUE
+is_variable_only <- TRUE
+is_blacklist_other <- FALSE
+custom_blacklist <- NULL
+custom_whitelist <- NULL
+
+bl_wl <- get_discrete_structure_filter(continuous_data, desire_layers, quantile_number, continuous_dynamic_variables,
+                                            continuous_static_variables, discrete_static_variables,
+                                            known_structure, corr_threshold, is_blacklist_internal,
+                                            is_variable_only, is_blacklist_other,
+                                            custom_blacklist, custom_whitelist)
+```
+
+

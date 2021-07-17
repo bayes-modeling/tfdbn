@@ -3,68 +3,17 @@
 # Created by: ADMIN
 # Created on: 6/19/2021
 
-preprocess_report_data <- function(file_data, index_column, time_column, time_values, filter_columns, filter_values, filter_operations,
-                                   continuous_kpi_names, continuous_unchange_kpi_names, discrete_kpi_names, current_layers, desire_layers, quantile_number = -1) {
-
-  data <- data.frame(fread(file_data, sep = ",", header = TRUE))
-  #Filter by super sector
-  data <- filter_data(data, filter_columns, filter_values, filter_operations)
-  data <- data[, c(index_column, time_column, continuous_kpi_names, continuous_unchange_kpi_names, discrete_kpi_names)]
-  print(dim(data))
-  index_values <- unique(data[, index_column])
-  data_constructed <- reconstruct_report_data(data, index_column, index_values, time_column, time_values, current_layers)
-  print(dim(data_constructed))
-  print(colnames(data_constructed))
-  print(head(data_constructed))
-  continuous_variables <- c()
-  for(name in c(continuous_kpi_names, continuous_unchange_kpi_names)) {
-    continuous_variables <- c(continuous_variables, c(paste(name, 1:current_layers, sep = "_")))
-  }
-
-  discrete_variables <- c()
-  for(name in discrete_kpi_names) {
-    discrete_variables <- c(discrete_variables, c(paste(name, 1:current_layers, sep = "_")))
-  }
-
-  data_constructed <- data_constructed[, c(continuous_variables, discrete_variables)]
-
-  quantiled_variables <- c()
-
-  if(quantile_number > 1) {
-    quantile_number <- rep(quantile_number, length(continuous_kpi_names) * desire_layers)
-    for(kpi in continuous_kpi_names) {
-      quantiled_variables <- c(quantiled_variables, paste(kpi, 1:desire_layers, sep = "_"))
-    }
-  }
-
-  print(head(data_constructed))
-
-  data_discrete_dbn <- prepare_constructed_report_data(data_constructed, current_layers, desire_layers, discrete_variables, continuous_variables, quantiled_variables, quantile_number)
-  data_continuous_dbn <- prepare_constructed_report_data(data_constructed, current_layers, desire_layers, discrete_variables, continuous_variables)
-
-  result <- list()
-  if(quantile_number > 1) {
-    result[["discrete"]] <- remove_redundant_variables(data_discrete_dbn[[1]], c(continuous_unchange_kpi_names, discrete_kpi_names))
-    result[["break_list"]] <- data_discrete_dbn[[2]]
-  } else {
-    result[["discrete"]] <- remove_redundant_variables(data_discrete_dbn[[1]], c(continuous_unchange_kpi_names, discrete_kpi_names))
-  }
-
-  result[["continuous"]] <- remove_redundant_variables(data_continuous_dbn, c(continuous_unchange_kpi_names, discrete_kpi_names))
-  return(result)
-}
-
 remove_redundant_variables <- function(data, variables) {
-  
+
+  cat(file = stderr(), "Remove redundant variables of dim", dim(data), "\n")
   for(variable in variables) {
+    cat(file = stderr(), "Remove redundant variable", variable, "\n")
     all_variables <- colnames(data)
     others <- grep(variable, all_variables, ignore.case = TRUE)
-    print(variable)
-    print(others)
     data[, variable] <- data[, others[1]]
     data <- data[, -others]
   }
-  
+  cat(file = stderr(), "Remove redundant variables of dim", dim(data), "completed", "\n")
   return(data)
 }
 
@@ -112,10 +61,10 @@ prepare_constructed_report_data <- function(data, current_layers, desire_layers,
   data_dbn <- prepare_report_for_dbn(data, current_layers, desire_layers, discrete_variables, continuous_variables)
   print(dim(data_dbn))
 
-  if(quantile == 1) {
+  if(length(quantile) == 1 && quantile != -1) {
     print("binary quantile")
     data_dbn = quantile_report_binary(data_dbn, quantiled_variables)
-  } else if(quantile > 1) {
+  } else if(length(quantile) > 1) {
     print("composite quantile")
     data_dbn <- quantile_report_composite(data_dbn, quantiled_variables, quantile)
   } else {
@@ -128,13 +77,16 @@ prepare_constructed_report_data <- function(data, current_layers, desire_layers,
 
 prepare_report_for_dbn <- function(data_shifted, current_layers, desire_layers, discrete_variables, continuous_variables) {
 
+  cat(file = stderr(), "Prepare data for dbn with dim", dim(data_shifted), "\n")
   if(length(discrete_variables) != 0) {
+    cat(file = stderr(), "Prepare data for dbn for discrete variables", discrete_variables, "\n")
     for(discrete_variable in discrete_variables) {
       data_shifted[, discrete_variable] <- factor(as.character(data_shifted[, discrete_variable]))
     }
   }
 
   if(length(continuous_variables) != 0) {
+    cat(file = stderr(), "Prepare data for dbn for continuous variables", continuous_variables, "\n")
     for(continuous_variable in continuous_variables) {
       data_shifted[, continuous_variable] <- as.numeric(as.character(data_shifted[, continuous_variable]))
     }
@@ -143,15 +95,16 @@ prepare_report_for_dbn <- function(data_shifted, current_layers, desire_layers, 
   kpi_names <- sort(colnames(data_shifted))
 
   data <- prepare_report_data(data_shifted, kpi_names, current_layers, desire_layers)
-  print(dim(data))
   data <- na.omit(data)
-  print(dim(data))
+  cat(file = stderr(), "Prepare data for dbn with dim", dim(data_shifted), "completed", "\n")
   return(data)
 }
 
 prepare_report_data <- function(data, total_variables, current_layers, desire_layers) {
-  print(dim(data))
+  cat(file = stderr(), "Prepare data with dim", dim(data), "\n")
+
   if(desire_layers == current_layers) {
+    cat(file = stderr(), "The desire layers equals current layers\n")
     return(data)
   } else if(desire_layers < current_layers) {
     i <- 1
@@ -176,6 +129,7 @@ prepare_report_data <- function(data, total_variables, current_layers, desire_la
       i <- i + current_layers
     }
 
+    cat(file = stderr(), "Prepare data with dim", dim(data), "completed", "\n")
     return(new_frame)
 
   } else {
@@ -218,7 +172,9 @@ quantile_report_composite <- function(data, continuous_variables, node_quantile)
   breaks_list <- list()
   #TODO: check length of continuous_variables and node_quantile
   for(k in 1: length(node_quantile)) {
+
     variable <- continuous_variables[k]
+    print(variable)
     values <- data[, variable]
     na_index <- which(values == -1010101010.0)
     zero_index <- which(values == 0)

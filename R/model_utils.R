@@ -79,9 +79,11 @@ convert_variables_to_factor <- function(data) {
   data_cols <- colnames(data)
   for(data_col in data_cols) {
     if(is.character(data[, data_col])) {
-      data[, data_col] <- as.factor(data[, data_col])
+      data[, data_col] <- as.numeric(as.factor(data[, data_col]))
     } else if(is.integer(data[, data_col])) {
       data[, data_col] <- data[, data_col] + 1e6
+    } else if(is.factor(data[, data_col])){
+      data[, data_col] <- as.numeric(data[, data_col])
     }
   }
 
