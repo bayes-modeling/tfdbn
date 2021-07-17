@@ -3,4 +3,4 @@ Type: Package
 Title: Tax Fraud Detection using Bayesian Network
 Version: 0.1.0
 Author: Trinh Quoc Anh and Do Quang Dat
-Maintainer: bayes.modeling@gmail.com
+Maintainer: <bayes.modeling@gmail.com>
