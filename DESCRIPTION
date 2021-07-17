@@ -11,5 +11,3 @@ Imports:
     stringi,
     visNetwork, 
     dplyr
-Collate:
-    main.R
