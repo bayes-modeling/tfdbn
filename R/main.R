@@ -77,7 +77,7 @@ get_continuous_structure_filter <- function(continuous_data, desire_layers, quan
 
     continuous_data <- continuous_data[, c(continuous_dynamic_variables, continuous_static_variables, discrete_static_variables)]
 
-    rho <- abs(cor(convert_variables_to_factor(continuous_data)))
+    rho <- abs(cor(convert_variables_to_factor(continuous_data)$data))
     rho <- as.matrix(rho)
     arc_structures <- structure_filter(known_structure, desire_layers, continuous_dynamic_variables,
                                        c(continuous_static_variables, discrete_static_variables),
@@ -97,7 +97,7 @@ get_discrete_structure_filter <- function(discrete_data, desire_layers, quantile
 
   discrete_data <- discrete_data[, c(continuous_dynamic_variables, continuous_static_variables, discrete_static_variables)]
 
-  rho <- abs(cor(convert_variables_to_factor(discrete_data)))
+  rho <- abs(cor(convert_variables_to_factor(discrete_data)$data))
   rho <- as.matrix(rho)
 
   arc_structures <- structure_filter(known_structure, desire_layers, continuous_dynamic_variables,
@@ -108,6 +108,72 @@ get_discrete_structure_filter <- function(discrete_data, desire_layers, quantile
 
   return(arc_structures)
 }
+
+training_model <- function(training_type, data, number_layers, bl, wl, cluster, algorithms, number_bootstrap = 100) {
+  cat(file = stderr(), "Training model ", training_type, "\n")
+  data_converted <- convert_variables_to_factor(data)
+
+  data_factors <- data_converted$data_factors
+  data <- data_converted$data
+
+  bl <- remove_unknown_arc(bl, colnames(data))
+  wl <- remove_unknown_arc(wl, colnames(data))
+  results <- list()
+  results$data_factors <- data_factors
+  for(algor in algorithms) {
+
+    cat(file = stderr(), "Training model by algorithm ", algor, "\n")
+    begin <- Sys.time()
+    trained <- structure_learning(data, desire_layers, bl, wl, slearning_algo = algor, number_bootstrap = number_bootstrap, cluster)
+    end <- Sys.time()
+    trained$time <- begin - end
+    trained$date <- date()
+    trained$blacklist <- bl
+    trained$whitelist <- wl
+
+    cat(file = stderr(), "Training model by algorithm ", algor, "compeleted", "\n")
+    results[[algor]] <- trained
+
+  }
+  cat(file = stderr(), "Training model", training_type, "compeleted", "\n")
+
+  return(results)
+}
+
+get_sector_normal <- function(fitted, sector_value, sector_variable,
+                              target_variables, n_samples, max_times, cl) {
+  cat(file = stderr(), "Get sector distribution of sector", sector_value,
+      "for targets", target_variables, "\n")
+  dist_total <- NULL
+  nth_sample <- 0
+  while(TRUE) {
+    nodes <- generate_dist_node(target_variables)
+    evidence_equation <- generate_sector_equation(sector_value, sector_variable, 0.5)
+    dist_equation <- paste(paste("bnlearn::cpdist(fitted, ", nodes, ", ", evidence_equation, ", cluster=cl)", sep = ""))
+    #print(dist_equation)
+    dist <- eval(parse(text=dist_equation))
+
+    if(is.null(dist_total)) {
+      dist_total <- dist
+    } else {
+      dist_total <- rbind(dist_total, dist)
+    }
+
+    nth_sample <- nth_sample + 1
+
+    if((!is.null(dist_total) & nrow(dist_total) >= n_samples)
+       | nth_sample > max_times) {
+      break
+    }
+  }
+
+
+  cat(file = stderr(), "Get sector distribution of sector", sector_value,
+      "for targets", target_variables, "completed with", nrow(dist_total), "sample", "\n")
+
+  return(dist_total)
+}
+
 
 
 

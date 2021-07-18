@@ -1,30 +1,4 @@
 
-training_model <- function(training_type, data, number_layers, bl, wl, cluster, algorithms, number_bootstrap = 100) {
-  cat(file = stderr(), "Training model ", training_type, "\n")
-  data <- convert_variables_to_factor(data)
-  bl <- remove_unknown_arc(bl, colnames(data))
-  wl <- remove_unknown_arc(wl, colnames(data))
-  results <- list()
-  for(algor in algorithms) {
-
-    cat(file = stderr(), "Training model by algorithm ", algor, "\n")
-    begin <- Sys.time()
-    trained <- structure_learning(data, desire_layers, bl, wl, slearning_algo = algor, number_bootstrap = number_bootstrap, cluster)
-    end <- Sys.time()
-    trained$time <- begin - end
-    trained$date <- date()
-    trained$blacklist <- bl
-    trained$whitelist <- wl
-
-    cat(file = stderr(), "Training model by algorithm ", algor, "compeleted", "\n")
-    results[[algor]] <- trained
-
-  }
-  cat(file = stderr(), "Training model", training_type, "compeleted", "\n")
-
-  return(trained)
-}
-
 structure_learning <- function(data, number_layers, bl, wl, cluster, slearning_algo = "tabu", number_bootstrap = 100) {
 
   cat(file = stderr(), "Learning structure by algorithm", slearning_algo, ", number bootstrap", number_bootstrap, "\n")
@@ -54,15 +28,15 @@ structure_learning <- function(data, number_layers, bl, wl, cluster, slearning_a
   #Pruning arcs
   dyn.avg = bnlearn::averaged.network(dyn.bootstrap, threshold = threshold)
 
-  undirected_arcs <- undirected.arcs(dyn.avg)
+  undirected_arcs <- bnlearn::undirected.arcs(dyn.avg)
   if(dim(undirected_arcs)[1] != 0) {
     for(i in 1:length(undirected_arcs[, 1])) {
-      dyn.avg <- drop.arc(dyn.avg, from = undirected_arcs[i, 1], to = undirected_arcs[i, 2])
+      dyn.avg <- bnlearn::drop.arc(dyn.avg, from = undirected_arcs[i, 1], to = undirected_arcs[i, 2])
     }
   }
 
   #Learning parameters
-  fitted <- bn.fit(dyn.avg, data, cluster = cluster)
+  fitted <- bnlearn::bn.fit(dyn.avg, data, cluster = cluster)
 
   result <- list()
   result[["dyn"]] <- dyn.dag
@@ -77,17 +51,23 @@ structure_learning <- function(data, number_layers, bl, wl, cluster, slearning_a
 
 convert_variables_to_factor <- function(data) {
   data_cols <- colnames(data)
+  data_factors <- list()
   for(data_col in data_cols) {
     if(is.character(data[, data_col])) {
-      data[, data_col] <- as.numeric(as.factor(data[, data_col]))
+      data_factor <- as.factor(data[, data_col])
+      data_factors[[data_col]] <- levels(data_factor)
+      data[, data_col] <- as.numeric(data_factor)
     } else if(is.integer(data[, data_col])) {
-      data[, data_col] <- data[, data_col] + 1e6
+      data_factor <- as.factor(data[, data_col])
+      data_factors[[data_col]] <- levels(data_factor)
+      data[, data_col] <- as.numeric(data_factor)
     } else if(is.factor(data[, data_col])){
+      data_factors[[data_col]] <- levels(data[, data_col])
       data[, data_col] <- as.numeric(data[, data_col])
     }
   }
 
-  return(data)
+  return(list(data = data, data_factors = data_factors))
 }
 
 remove_unknown_arc <- function(arcs, variables) {

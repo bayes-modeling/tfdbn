@@ -500,4 +500,20 @@ get_graph_diff <- function(graph1, graph2) {
   return(graph1)
 }
 
+generate_sector_equation <- function(sector_value, sector_variable, range) {
+
+  equation <- paste("(", sector_variable, " >= ", sector_value - range, " & ", sector_variable, " <= ", sector_value + range, ")", sep = "")
+
+  return(equation)
+}
+
+generate_dist_node <- function(nodes) {
+  node_strings <- c()
+  for(node in nodes) {
+    node_strings <- c(node_strings, paste("\"", node, "\"", sep = ""))
+  }
+  equation <- paste("nodes = c(", paste(node_strings, collapse = ","), ")", sep = "")
+  return(equation)
+}
+
 

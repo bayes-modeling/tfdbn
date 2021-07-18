@@ -3,18 +3,13 @@ title: "R Notebook"
 output: html_notebook
 ---
 
-
-```{r}
-
-```
-
 ## Test preprocess data
 ```{r}
 library(tfdbn)
 data_path = "data/report_sample_small2.csv"
 
 data <- read.csv(data_path)
-type <- "discrete"
+type <- "continuous"
 index_column <- "MST"
 time_column <- "NAM"
 time_values <- 2017:2019
@@ -33,9 +28,10 @@ preprocessed <- preprocess_report_data(data, type, index_column, time_column, ti
 
 ```
 
+## Test filter blacklist and whitelist
 ```{r}
 library(tfdbn)
-continuous_data <- preprocessed$discrete
+continuous_data <- preprocessed$continuous
 desire_layers <- preprocessed$desire_layers
 quantile_number <- preprocessed$quantile_number
 continuous_dynamic_variables <- preprocessed$continuous_dynamic_variables
@@ -49,11 +45,50 @@ is_blacklist_other <- FALSE
 custom_blacklist <- NULL
 custom_whitelist <- NULL
 
-bl_wl <- get_discrete_structure_filter(continuous_data, desire_layers, quantile_number, continuous_dynamic_variables,
+bl_wl <- get_continuous_structure_filter(continuous_data, desire_layers, quantile_number, continuous_dynamic_variables,
                                             continuous_static_variables, discrete_static_variables,
                                             known_structure, corr_threshold, is_blacklist_internal,
                                             is_variable_only, is_blacklist_other,
                                             custom_blacklist, custom_whitelist)
 ```
+
+## Test training
+```{r}
+library(tfdbn)
+library(parallel)
+continuous_data <- preprocessed$continuous
+desire_layers <- preprocessed$desire_layers
+bl <- bl_wl$blacklist
+wl <- bl_wl$whitelist
+cluster = makeCluster(4)
+algorithms <- c("tabu", "hc")
+number_bootstrap = 100
+
+trained <- training_model("continuous", continuous_data, number_layers, bl, wl, cluster, algorithms, number_bootstrap)
+```
+#Test generate sample
+```{r}
+library(tfdbn)
+library(bnlearn)
+
+data_factor <- trained$data_factors
+fitted <- trained$tabu$fitted
+data <- preprocessed$continuous
+sector_variable <- "NGANHKT"
+all_variables <- c(preprocessed$continuous_dynamic_variables, 
+                      preprocessed$continuous_static_variables,
+                      preprocessed$discrete_static_variables)
+
+target_variables <- setdiff(all_variables, c(sector_variable))
+
+for(sector in data_factor[[sector_variable]][1:2]) {
+  sector_id <- which(data_factor[[sector_variable]] %in% sector)
+  
+  tfdbn::get_sector_normal(fitted, sector_id, sector_variable, target_variables, 
+                    1000, 10, cluster)
+}
+```
+
+
 
 
