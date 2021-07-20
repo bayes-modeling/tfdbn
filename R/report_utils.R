@@ -3,21 +3,30 @@
 # Created by: ADMIN
 # Created on: 6/19/2021
 
-remove_redundant_variables <- function(data, variables) {
+remove_redundant_variables <- function(data, variables, debug = FALSE) {
 
-  cat(file = stderr(), "Remove redundant variables of dim", dim(data), "\n")
+  if(debug) {
+    cat("Remove redundant variables of dim", dim(data), "\n")
+  }
+
   for(variable in variables) {
-    cat(file = stderr(), "Remove redundant variable", variable, "\n")
+    if(debug) {
+      cat("Remove redundant variable", variable, "\n")
+    }
+
     all_variables <- colnames(data)
     others <- grep(variable, all_variables, ignore.case = TRUE)
     data[, variable] <- data[, others[1]]
     data <- data[, -others]
   }
-  cat(file = stderr(), "Remove redundant variables of dim", dim(data), "completed", "\n")
+  if(debug) {
+    cat("Remove redundant variables of dim", dim(data), "completed", "\n")
+  }
+
   return(data)
 }
 
-reconstruct_report_data <- function(data, index, index_values, time_column, time_values, current_layers) {
+reconstruct_report_data <- function(data, index, index_values, time_column, time_values, current_layers, debug = FALSE) {
   cols <- colnames(data)
 
   new_cols <- c()
@@ -39,28 +48,24 @@ reconstruct_report_data <- function(data, index, index_values, time_column, time
     row <- c()
 
     for (time_value in time_values) {
-      for(j in 1:ncol(index_data)) {
-        value <- as.character(index_data[index_data[, time_column] == time_value, j][1])
-        if(identical(value, "character(0)") | identical(value, "") | identical(value, "numeric(0)")) {
-          #print(value)
-          value <- NA
-        }
-        row <- c(row, value)
-      }
+      row <- c(row, index_data[index_data[, time_column] == time_value, ])
     }
 
     f <- rbind(f, row)
 
   }
+
+  f <- as.data.frame(f)
   f <- f[-1, ]
   colnames(f) <- new_cols
   return(as.data.frame(f))
 }
 
-prepare_constructed_report_data <- function(data, current_layers, desire_layers, discrete_variables, continuous_variables, quantiled_variables = c(), quantile = -1) {
-  data_dbn <- prepare_report_for_dbn(data, current_layers, desire_layers, discrete_variables, continuous_variables)
-  print(dim(data_dbn))
-
+prepare_constructed_report_data <- function(data, current_layers, desire_layers,
+                                            discrete_variables, continuous_variables,
+                                            quantiled_variables = c(), quantile = -1,
+                                            na_omit = TRUE, debug = FALSE) {
+  data_dbn <- prepare_report_for_dbn(data, current_layers, desire_layers, discrete_variables, continuous_variables, na_omit, debug)
   if(length(quantile) == 1 && quantile != -1) {
     print("binary quantile")
     data_dbn = quantile_report_binary(data_dbn, quantiled_variables)
@@ -69,24 +74,37 @@ prepare_constructed_report_data <- function(data, current_layers, desire_layers,
     data_dbn <- quantile_report_composite(data_dbn, quantiled_variables, quantile)
   } else {
     data_dbn[data_dbn == 1e10] <- NA
-    data_dbn <- na.omit(data_dbn)
+    if(na_omit) {
+      data_dbn <- na.omit(data_dbn)
+    }
+
   }
 
   return(data_dbn)
 }
 
-prepare_report_for_dbn <- function(data_shifted, current_layers, desire_layers, discrete_variables, continuous_variables) {
+prepare_report_for_dbn <- function(data_shifted, current_layers, desire_layers, discrete_variables,
+                                   continuous_variables, na_omit, debug = FALSE) {
 
-  cat(file = stderr(), "Prepare data for dbn with dim", dim(data_shifted), "\n")
+  if(debug) {
+    cat("Prepare data for dbn with dim", dim(data_shifted), "\n")
+  }
+
   if(length(discrete_variables) != 0) {
-    cat(file = stderr(), "Prepare data for dbn for discrete variables", discrete_variables, "\n")
+    if(debug) {
+      cat("Prepare data for dbn for discrete variables", discrete_variables, "\n")
+    }
+
     for(discrete_variable in discrete_variables) {
       data_shifted[, discrete_variable] <- factor(as.character(data_shifted[, discrete_variable]))
     }
   }
 
   if(length(continuous_variables) != 0) {
-    cat(file = stderr(), "Prepare data for dbn for continuous variables", continuous_variables, "\n")
+    if(debug) {
+      cat("Prepare data for dbn for continuous variables", continuous_variables, "\n")
+    }
+
     for(continuous_variable in continuous_variables) {
       data_shifted[, continuous_variable] <- as.numeric(as.character(data_shifted[, continuous_variable]))
     }
@@ -95,16 +113,27 @@ prepare_report_for_dbn <- function(data_shifted, current_layers, desire_layers, 
   kpi_names <- sort(colnames(data_shifted))
 
   data <- prepare_report_data(data_shifted, kpi_names, current_layers, desire_layers)
-  data <- na.omit(data)
-  cat(file = stderr(), "Prepare data for dbn with dim", dim(data_shifted), "completed", "\n")
+  if(na_omit) {
+    data <- na.omit(data)
+  }
+
+  if(debug) {
+    cat("Prepare data for dbn with dim", dim(data_shifted), "completed", "\n")
+  }
+
   return(data)
 }
 
-prepare_report_data <- function(data, total_variables, current_layers, desire_layers) {
-  cat(file = stderr(), "Prepare data with dim", dim(data), "\n")
+prepare_report_data <- function(data, total_variables, current_layers, desire_layers, debug=FALSE) {
+  if(debug) {
+    cat("Prepare data with dim", dim(data), "\n")
+  }
 
   if(desire_layers == current_layers) {
-    cat(file = stderr(), "The desire layers equals current layers\n")
+    if(debug) {
+      cat("The desire layers equals current layers\n")
+    }
+
     return(data)
   } else if(desire_layers < current_layers) {
     i <- 1
@@ -129,7 +158,10 @@ prepare_report_data <- function(data, total_variables, current_layers, desire_la
       i <- i + current_layers
     }
 
-    cat(file = stderr(), "Prepare data with dim", dim(data), "completed", "\n")
+    if(debug) {
+      cat("Prepare data with dim", dim(data), "completed", "\n")
+    }
+
     return(new_frame)
 
   } else {

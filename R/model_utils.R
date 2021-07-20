@@ -1,7 +1,9 @@
 
-structure_learning <- function(data, number_layers, bl, wl, cluster, slearning_algo = "tabu", number_bootstrap = 100) {
+structure_learning <- function(data, number_layers, bl, wl, cluster, slearning_algo = "tabu", number_bootstrap = 100, debug = FALSE) {
 
-  cat(file = stderr(), "Learning structure by algorithm", slearning_algo, ", number bootstrap", number_bootstrap, "\n")
+  if(debug) {
+    cat(file = stderr(), "Learning structure by algorithm", slearning_algo, ", number bootstrap", number_bootstrap, "\n")
+  }
 
   data_kpi <- data
   #Start learning
@@ -21,8 +23,11 @@ structure_learning <- function(data, number_layers, bl, wl, cluster, slearning_a
   }
 
   #Bootstrap
-  cat(file = stderr(), "Start bootstrap structure by algorithm", slearning_algo, ", number bootstrap", number_bootstrap, "\n")
-  dyn.bootstrap = custom_bootstrap(data_kpi, number_bootstrap, slearning_algo, bl, wl, cluster)
+  if(debug) {
+    cat(file = stderr(), "Start bootstrap structure by algorithm", slearning_algo, ", number bootstrap", number_bootstrap, "\n")
+  }
+
+  dyn.bootstrap = custom_bootstrap(data_kpi, number_bootstrap, slearning_algo, bl, wl, cluster, debug)
   threshold = attr(dyn.bootstrap, "threshold")
 
   #Pruning arcs
@@ -45,7 +50,9 @@ structure_learning <- function(data, number_layers, bl, wl, cluster, slearning_a
   result[["bootstrap"]] <- dyn.bootstrap
   result[["threshold"]] <- threshold
   result[["kpi"]] <- data_kpi
-  cat(file = stderr(), "Learning structure by algorithm", slearning_algo, ", number bootstrap", number_bootstrap, "completed", "\n")
+  if(debug) {
+    cat(file = stderr(), "Learning structure by algorithm", slearning_algo, ", number bootstrap", number_bootstrap, "completed", "\n")
+  }
   return(result)
 }
 
@@ -92,10 +99,17 @@ remove_unknown_arc <- function(arcs, variables) {
   }
 }
 
-custom_bootstrap <- function(data, R, algorithm, blacklist, whitelist, cluster) {
-  cat(file = stderr(), paste("Boostrap with R = ", R, " and algorithm = ", algorithm), "\n")
+custom_bootstrap <- function(data, R, algorithm, blacklist, whitelist, cluster, debug = FALSE) {
+  if(debug) {
+    cat(file = stderr(), paste("Boostrap with R = ", R, " and algorithm = ", algorithm), "\n")
+  }
+
   dyn.str = bnlearn::boot.strength(data, cluster = cluster, R = R, algorithm = algorithm, algorithm.args = list(blacklist = blacklist, whitelist = whitelist))
-  cat(file = stderr(), "Boostrap with R = ", R, " and algorithm = ", algorithm, " completed", "\n")
+
+  if(debug) {
+    cat(file = stderr(), "Boostrap with R = ", R, " and algorithm = ", algorithm, " completed", "\n")
+  }
+
   return(dyn.str)
 }
 

@@ -1,110 +1,38 @@
-
-dist_scenario <- function(fitted, data, event_nodes, evidence_nodes, type, range, method = "lw") {
-  evidence_equation <- ""
-  nodes <- generate_dist_node(event_nodes)
-  result <- list()
-  for(i in 1:nrow(data)) {
-    if(type == "discrete") {
-      evidence_equation <- generate_discrete_equation(data[1, ], evidence_nodes, "evidence")
-      dist <- paste(paste("bnlearn::cpdist(fitted, ", nodes, ", ", evidence_equation, ")", sep = ""))
-      result[[i]] <- eval(parse(text=dist))
-    } else {
-      predictor <- data[i, evidence_nodes]
-      print(event_nodes)
-      dist <- bnlearn::cpdist(fitted, nodes = event_nodes,
-                     evidence = as.list(predictor), method = method)
-      result[[i]] <- dist
-    }
-  }
-
-  return(result)
-}
-
-query_scenario <- function(fitted, data, event_nodes, evidence_nodes, type, range) {
-  query <- ""
-  result <- c()
-  for(i in 1:nrow(data)) {
-    if(type == "discrete") {
-
-      evidence_equation <- generate_discrete_equation(data[i, ], evidence_nodes, "evidence")
-      event_equation <- generate_discrete_equation(data[i, ], event_nodes, "event")
-      query <- paste(paste("bnlearn::cpquery(fitted, ", event_equation, ", ", evidence_equation, ", n = 1e6)", sep = ""))
-
-    } else {
-
-      evidence_equation <- generate_continuous_equation(data[i, ], evidence_nodes, "evidence", range)
-      event_equation <- generate_continuous_equation(data[i, ], event_nodes, "event", range)
-      query <- paste(paste("bnlearn::cpquery(fitted, ", event_equation, ", ", evidence_equation, ", n = 1e6)", sep = ""))
-    }
-
-    print(query)
-
-    result <- c(result, eval(parse(text=query)))
-  }
-
-  return(result)
-}
-
-query_sector_kpi <- function(fitted, query_variables, value, type) {
-
-  sector_dist <- bnlearn::cpdist(fitted, nodes = query_variables,
-                        evidence = (NGANHKT == value), method = method)
-
-  other_dist <- bnlearn::cpdist(fitted, nodes = query_variables,
-                       evidence = (NGANHKT != value), method = method)
-
-
-}
-
-generate_discrete_equation <- function(data, nodes, equation_type) {
+generate_continuous_equation <- function(nodes, equation_type, ranges) {
   equation <- c()
   for(i in 1:length(nodes)) {
-    event <- nodes[i]
-    for(j in 1:nrow(data)) {
-      value <- data[j, event]
-      event_string <- as.character(event)
-      equation = c(equation, paste(event_string, " == \"", value, "\"", sep = ""))
-    }
+
+    value_ranges <- ranges[[i]]
+    value_upper <- value_ranges[1]
+    value_lower <- value_ranges[2]
+
+    node <- nodes[i]
+
+    equation = c(equation, paste("(", node, " >= ", value_upper, " & ", node, " <= ", value_lower, ")", sep = ""))
   }
 
-  equation <- paste(equation_type, " = (", paste(equation, collapse = " & "), ")", sep = "")
+  equation <- paste(equation_type, " = (", paste(equation, collapse = " | "), ")", sep = "")
 
   return(equation)
 }
 
-generate_continuous_equation <- function(data, nodes, equation_type, range) {
-  equation <- c()
-  for(i in 1:length(nodes)) {
-    for(j in 1:nrow(data)) {
-      event <- nodes[i]
-      value <- data[j, event]
-      value_upper <- value + range
-      value_lower <- value - range
-
-      event_string <- as.character(event)
-
-      equation = c(equation, paste("(", event_string, " >= ", value_lower, " & ", event_string, " <= ", value_upper, ")", sep = ""))
-    }
-
-
-  }
-
-  print(equation)
-
-  equation <- paste(equation_type, " = (", paste(equation, collapse = " & "), ")", sep = "")
-
-  print(equation)
-
-  return(equation)
+generate_a_continuous_equation <- function(node, equation_type, upper, lower) {
+  return(paste("(", node, " >= ", value_lower, " & ", node, " <= ", value_upper, ")", sep = ""))
 }
 
-generate_dist_node <- function(nodes) {
-  node_strings <- c()
-  for(node in nodes) {
-    node_strings <- c(node_strings, paste("\"", node, "\"", sep = ""))
+get_kpi_range_around_value <- function(kpi_value, kpi_profile, probs) {
+  kpi_quantile <- as.numeric(quantile(kpi_profile, probs))
+  if(kpi_value < min(kpi_profile)) {
+    return(c(-Inf, min(kpi_profile)))
+  } else if(kpi_value >= max(kpi_profile)) {
+    return(c(max(kpi_profile), Inf))
   }
-  equation <- paste("nodes = c(", paste(node_strings, collapse = ","), ")", sep = "")
-  print(equation)
-  return(equation)
+  for(i in 1:(length(kpi_quantile) - 1)) {
+    if(kpi_quantile[i] <= kpi_value & kpi_value < kpi_quantile[i + 1]) {
+      return(c(kpi_quantile[i], kpi_quantile[i + 1]))
+    }
+  }
+
+  return(NULL)
 }
 

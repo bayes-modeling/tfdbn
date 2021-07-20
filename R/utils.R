@@ -3,7 +3,7 @@ structure_filter <- function(known_structure, desire_layers, dynamic_variables, 
                              rho, corr_threshold,
                              custom_blacklist, custom_whitelist) {
 
-  print(rho)
+
   whitelist <- filter_whitelist(known_structure, desire_layers, dynamic_variables, static_variables,
                                 is_blacklist_internal, is_variable_only, rho, corr_threshold,
                                 custom_blacklist, custom_whitelist)
@@ -27,14 +27,8 @@ filter_whitelist <- function(known_structure, desire_layers, dynamic_variables, 
     graph_full <- generate_fully_connected_graph(dynamic_variables, static_variables, desire_layers)
   }
 
-  print(graph_full)
-  print(rho)
-  print(colnames(rho))
-  print(rownames(rho))
-
   graph_full <- filter_by_correlation(graph_full, rho, corr_threshold)
 
-  print(is_blacklist_internal)
   if(is_blacklist_internal) {
     graph_full <- filter_by_blacklist_internal(graph_full, dynamic_variables, desire_layers)
   }
@@ -115,7 +109,6 @@ filter_data <- function(data, filter_columns, filter_values, filter_operation) {
     column_value = filter_values[i]
     operation = filter_operation[i]
 
-    print(column_name)
     if(operation == "==") {
       data <- data[data[, column_name] == column_value, ]
     } else if(operation == "!=") {
@@ -129,7 +122,7 @@ filter_data <- function(data, filter_columns, filter_values, filter_operation) {
     } else if(operation == "<") {
       data <- data[data[, column_name] < column_value, ]
     } else {
-      cat(file = stderr(), "Unsupported operation", operation, "\n")
+      cat("Unsupported operation", operation, "\n")
     }
   }
   return(data)
@@ -183,12 +176,11 @@ group_continuous <- function(data) {
 
 remove_bias_variables <- function(data, pattern, threshold) {
   data_length = dim(data)[1]
-  print(data_length)
+
   remove_col_index <- c()
   for(col in colnames(data)) {
     number_zeros = sum(as.character(data[, col]) == pattern)
     if((number_zeros / data_length) >= threshold) {
-      print(paste("Variables", col, "removed"))
       remove_col_index <- c(remove_col_index, which(col == colnames(data)))
     }
   }
@@ -271,14 +263,13 @@ generate_fully_connected_graph <- function(dynamic_variables, static_variables, 
 
 filter_by_correlation <- function(graph, cor_matrix, threshold) {
   remove_arcs <- c()
-  print(cor_matrix)
-  print(graph)
+
   for(i in 1:nrow(graph)) {
     from <- graph[i, 1]
     to <- graph[i, 2]
-    print(paste(from, to))
+
     if(abs(cor_matrix[from, to]) <= threshold) {
-      print(paste(from, to))
+
       remove_arcs <- c(remove_arcs, i)
     }
   }
@@ -290,15 +281,12 @@ filter_by_correlation <- function(graph, cor_matrix, threshold) {
 }
 
 filter_by_blacklist_internal <- function(graph, variables, number_layers) {
-  print(dim(graph))
   for(i in 1:(number_layers - 1)) {
     layer_variables <- grep(paste0(i, "$"), variables, value = TRUE)
     internal_arcs <- generate_internal_arcs(layer_variables)
     graph <- get_graph_diff(graph, internal_arcs)
 
   }
-
-  print(dim(graph))
 
   return(graph)
 }
@@ -385,10 +373,8 @@ get_known_structure <- function(number_layers, all_variables, structure_file, is
 
       }
       self_structure <- init_self_structure(all_variables, number_layers)
-      print(dim(known_structure))
-      known_structure <- rbind(known_structure, self_structure)
 
-      print(dim(known_structure))
+      known_structure <- rbind(known_structure, self_structure)
     } else {
       known_structure <- structure
     }
@@ -428,7 +414,7 @@ init_self_structure <- function(all_variables, number_layers) {
       }
     }
   }
-  print(wl)
+
   wl <- wl[-1, ]
   colnames(wl) <- c("from", "to")
   return(wl)
@@ -456,7 +442,7 @@ filter_unknow_arc <- function(graph, all_variables) {
   for(i in 1:nrow(graph)) {
     from <- graph$from[i]
     to <- graph$to[i]
-    print(paste(from, to))
+
     if((length(which(from %in% all_variables)) == 0
        || length(which(to %in% all_variables)) == 0)
        || from == to) {
@@ -514,6 +500,21 @@ generate_dist_node <- function(nodes) {
   }
   equation <- paste("nodes = c(", paste(node_strings, collapse = ","), ")", sep = "")
   return(equation)
+}
+
+get_kpi_score <- function(kpi_value, kpi_quantile, score_table) {
+  if(is.na(kpi_value)) return(-1)
+  for(i in 2:length(kpi_quantile)) {
+    if(kpi_value <= kpi_quantile[i]) {
+      return(score_table[i])
+    }
+  }
+  return(0)
+}
+
+get_anomally_kpi <- function(kpi_score, threshold) {
+  kpi_values <- as.numeric(kpi_score[1, ])
+  return(colnames(kpi_score)[which(-1 < kpi_values & kpi_values <= threshold)])
 }
 
 

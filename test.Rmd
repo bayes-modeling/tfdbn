@@ -18,11 +18,11 @@ continuous_static_kpi_names <- c("TUOI", "VON")
 discrete_static_kpi_names <- c("NGANHKT")
 current_layers = 3
 desire_layers = 2
-quantile_number = 3
+quantile_number = -1
 
 head(data)
 
-preprocessed <- preprocess_report_data(data, type, index_column, time_column, time_values,
+preprocessed <- preprocess_training_data(data, type, index_column, time_column, time_values,
                        continuous_kpi_names, continuous_static_kpi_names, 
                        discrete_static_kpi_names, current_layers, desire_layers, quantile_number)
 
@@ -31,7 +31,7 @@ preprocessed <- preprocess_report_data(data, type, index_column, time_column, ti
 ## Test filter blacklist and whitelist
 ```{r}
 library(tfdbn)
-continuous_data <- preprocessed$continuous
+continuous_data <- preprocessed$data
 desire_layers <- preprocessed$desire_layers
 quantile_number <- preprocessed$quantile_number
 continuous_dynamic_variables <- preprocessed$continuous_dynamic_variables
@@ -45,7 +45,7 @@ is_blacklist_other <- FALSE
 custom_blacklist <- NULL
 custom_whitelist <- NULL
 
-bl_wl <- get_continuous_structure_filter(continuous_data, desire_layers, quantile_number, continuous_dynamic_variables,
+bl_wl <- tfdbn::get_continuous_structure_filter(continuous_data, desire_layers, quantile_number, continuous_dynamic_variables,
                                             continuous_static_variables, discrete_static_variables,
                                             known_structure, corr_threshold, is_blacklist_internal,
                                             is_variable_only, is_blacklist_other,
@@ -56,15 +56,15 @@ bl_wl <- get_continuous_structure_filter(continuous_data, desire_layers, quantil
 ```{r}
 library(tfdbn)
 library(parallel)
-continuous_data <- preprocessed$continuous
+continuous_data <- preprocessed$data
 desire_layers <- preprocessed$desire_layers
 bl <- bl_wl$blacklist
 wl <- bl_wl$whitelist
-cluster = makeCluster(4)
+n_cluster = 4
 algorithms <- c("tabu", "hc")
 number_bootstrap = 100
 
-trained <- training_model("continuous", continuous_data, number_layers, bl, wl, cluster, algorithms, number_bootstrap)
+trained <- training_model("continuous", continuous_data, number_layers, bl, wl, n_cluster, algorithms, number_bootstrap)
 ```
 #Test generate sample
 ```{r}
@@ -73,22 +73,73 @@ library(bnlearn)
 
 data_factor <- trained$data_factors
 fitted <- trained$tabu$fitted
-data <- preprocessed$continuous
+data <- preprocessed$data
+n_cluster <- 4
 sector_variable <- "NGANHKT"
 all_variables <- c(preprocessed$continuous_dynamic_variables, 
                       preprocessed$continuous_static_variables,
                       preprocessed$discrete_static_variables)
 
 target_variables <- setdiff(all_variables, c(sector_variable))
-
-for(sector in data_factor[[sector_variable]][1:2]) {
+sector_profiles <- list()
+for(sector in data_factor[[sector_variable]]) {
   sector_id <- which(data_factor[[sector_variable]] %in% sector)
   
-  tfdbn::get_sector_normal(fitted, sector_id, sector_variable, target_variables, 
-                    1000, 10, cluster)
+  sector_profiles[[sector]] <- tfdbn::get_sector_normal(fitted, sector_id, sector_variable, target_variables, 
+                    1000, 10, n_cluster)
 }
 ```
+## Test preprocess test data
+```{r}
+library(tfdbn)
 
+data_path = "data/report_sample_small2.csv"
+data <- read.csv(data_path)
+type <- preprocessed$type
+index_column <- preprocessed$index_column
+time_column <- preprocessed$time_column
+time_values <- preprocessed$time_values
+continuous_kpi_names <- preprocessed$continuous_kpi_names
+continuous_static_kpi_names <- preprocessed$continuous_static_variables
+discrete_static_kpi_names <- preprocessed$discrete_static_variables
+current_layers <- preprocessed$current_layers
+desire_layers <- preprocessed$desire_layers
+quantile_number <- -1
+
+test_data <- tfdbn::preprocess_test_data(data, type, index_column, time_column, time_values,
+                                     continuous_kpi_names, continuous_static_kpi_names,
+                                     discrete_static_kpi_names, current_layers, desire_layers, quantile_number)
+```
+
+## Test calculate KPI Score
+```{r}
+library(tfdbn)
+
+sector_variable <- "NGANHKT"
+probs <- c(0, 0.05, 0.95, 1)
+score_table <- c(0, 5, 50, 5)
+discrete_static_kpi_names <- preprocessed$discrete_static_variables
+data_scores <- tfdbn::calculate_kpi_score(test_data, sector_variable, sector_profiles, probs, score_table)
+
+data_id <- names(data_scores)
+for(id in data_id) {
+  print(id)
+  anomally_kpi <- get_anomally_kpi(data_scores[[id]], 5)
+  
+  print(anomally_kpi)
+}
+
+```
+
+## Test Prob Score
+```{r}
+library(tfdbn)
+sector_variable <- "NGANHKT"
+
+data_probs <- tfdbn::calculate_prob_score(fitted, test_data, data_scores, sector_variable, c("VON", "TUOI"), data_factor[[sector_variable]], sector_profiles, 5, c(0, 0.05, 0.95, 1))
+
+print(data_probs)
+```
 
 
 
