@@ -6,9 +6,7 @@ output: html_notebook
 ## Test preprocess data
 ```{r}
 library(tfdbn)
-data_path = "data/report_sample_small2.csv"
-
-data <- read.csv(data_path)
+data("data_big")
 type <- "continuous"
 index_column <- "MST"
 time_column <- "NAM"
@@ -22,11 +20,13 @@ quantile_number = -1
 
 head(data)
 
-preprocessed <- preprocess_training_data(data, type, index_column, time_column, time_values,
+preprocessed <- preprocess_training_data(data_big, type, index_column, time_column, time_values,
                        continuous_kpi_names, continuous_static_kpi_names, 
                        discrete_static_kpi_names, current_layers, desire_layers, quantile_number)
 
 ```
+
+
 
 ## Test filter blacklist and whitelist
 ```{r}
@@ -123,12 +123,8 @@ data_scores <- tfdbn::calculate_kpi_score(test_data, sector_variable, sector_pro
 
 data_id <- names(data_scores)
 for(id in data_id) {
-  print(id)
   anomally_kpi <- get_anomally_kpi(data_scores[[id]], 5)
-  
-  print(anomally_kpi)
 }
-
 ```
 
 ## Test Prob Score
@@ -136,10 +132,39 @@ for(id in data_id) {
 library(tfdbn)
 sector_variable <- "NGANHKT"
 
-data_probs <- tfdbn::calculate_prob_score(fitted, test_data, data_scores, sector_variable, c("VON", "TUOI"), data_factor[[sector_variable]], sector_profiles, 5, c(0, 0.05, 0.95, 1))
+data_probs <- tfdbn::calculate_prob_score(fitted, test_data, data_scores, sector_variable, c("VON", "TUOI"), data_factor[[sector_variable]], sector_profiles, 5, c(0, 0.05, 0.95, 1), 4, 5)
 
 print(data_probs)
 ```
+
+```{r}
+all <- names(data_scores)
+rows <- 1:3
+for(id in all) {
+  kpi_score <- sum(as.numeric(data_scores[[id]][1, ]))
+  print(kpi_score)
+  prob_score <- 1
+  
+  if(!is.null(data_probs[[id]])) {
+    prob_score <- data_probs[[id]]
+  }
+  
+  anomally_score <- get_anomally_kpi(data_scores[[id]], 5)
+  anomally_kpi_string <- "-"
+  if(length(anomally_score) != 0) {
+    anomally_kpi_string <- paste(anomally_kpi, collapse = " ,")
+  }
+  
+  rows <- rbind(rows, c(kpi_score, prob_score, anomally_kpi_string))
+}
+
+rows <- rows[-1, ]
+rownames(rows) <- all
+colnames(rows) <- c("KPI Score", "Prob Score", "Anomally KPI")
+
+write.csv(rows, "test.csv")
+```
+
 
 
 

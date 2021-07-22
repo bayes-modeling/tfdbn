@@ -7,3 +7,6 @@ Imports:
     data.table,
     bnlearn,
     parallel
+LazyData: yes
+NeedsCompilation: yes
+RoxygenNote: 7.1.1

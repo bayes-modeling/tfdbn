@@ -1,3 +1,37 @@
+#' Pre-processing data before training with DBN
+#'
+#' @param data A data frame which rows are financial reports and columns is KPI.
+#' @param type Data will preprocess as discrete or continuous
+#' @param index_column Column name of company id
+#' @param time_column Column name of time value
+#' @param time_values Time values by year
+#' @param continuous_kpi_names Column names of continuous dynamic KPI
+#' @param continuous_static_kpi_names Column names of continuous static (un-change over time) KPI
+#' @param discrete_static_kpi_names Columns names of discrete static (un-change over time) KPI
+#' @param current_layers Maximum number of layers in bayesian network, equal number of time values
+#' @param desire_layers Number of layers for training bayesian network, less than or equal current layers
+#' @param quantile_number For type is "discrete", number of quantile for each continuous variable
+#' @param na_omit Is omit NA or not
+#' @param debug Debug mode
+#' @return A processed data frame with pre-process params
+#' @examples
+#' data("data_big")
+#' type <- "continuous"
+#' index_column <- "MST"
+#' time_column <- "NAM"
+#' time_values <- 2017:2019
+#' continuous_kpi_names <- paste("K_C_V0", 1:9, sep = "")
+#' continuous_static_kpi_names <- c("TUOI", "VON")
+#' discrete_static_kpi_names <- c("NGANHKT")
+#' current_layers = 3
+#' desire_layers = 2
+#' quantile_number = -1
+
+#' head(data)
+
+#' preprocessed <- preprocess_training_data(data_big, type, index_column, time_column, time_values,
+#'                                          continuous_kpi_names, continuous_static_kpi_names,
+#'                                          discrete_static_kpi_names, current_layers, desire_layers, quantile_number)
 preprocess_training_data <- function(data, type, index_column, time_column, time_values,
                                    continuous_kpi_names, continuous_static_kpi_names, discrete_static_kpi_names, current_layers,
                                    desire_layers, quantile_number = -1, na_omit = TRUE, debug = FALSE) {
@@ -77,6 +111,38 @@ preprocess_training_data <- function(data, type, index_column, time_column, time
   }
 }
 
+#' Pre-processing data before calculate score
+#'
+#' @param data A data frame which rows are financial reports and columns is KPI.
+#' @param type Data will preprocess as discrete or continuous
+#' @param index_column Column name of company id
+#' @param time_column Column name of time value
+#' @param time_values Time values by year
+#' @param continuous_kpi_names Column names of continuous dynamic KPI
+#' @param continuous_static_kpi_names Column names of continuous static (un-change over time) KPI
+#' @param discrete_static_kpi_names Columns names of discrete static (un-change over time) KPI
+#' @param current_layers Maximum number of layers in bayesian network, equal number of time values
+#' @param desire_layers Number of layers for training bayesian network, less than or equal current layers
+#' @param quantile_number For type is "discrete", number of quantile for each continuous variable
+#' @param debug Debug mode
+#' @return A processed data frame with pre-process params
+#' @examples
+#' data("preprocessed")
+#' data("data_small")
+#' type <- preprocessed$type
+#' index_column <- preprocessed$index_column
+#' time_column <- preprocessed$time_column
+#' time_values <- preprocessed$time_values
+#' continuous_kpi_names <- preprocessed$continuous_kpi_names
+#' continuous_static_kpi_names <- preprocessed$continuous_static_variables
+#' discrete_static_kpi_names <- preprocessed$discrete_static_variables
+#' current_layers <- preprocessed$current_layers
+#' desire_layers <- preprocessed$desire_layers
+#' quantile_number <- -1
+
+#' test_data <- tfdbn::preprocess_test_data(data, type, index_column, time_column, time_values,
+#'                                          continuous_kpi_names, continuous_static_kpi_names,
+#'                                          discrete_static_kpi_names, current_layers, desire_layers, quantile_number)
 preprocess_test_data <- function(data, type, index_column, time_column, time_values,
                                   continuous_kpi_names, continuous_static_kpi_names,
                                   discrete_static_kpi_names, current_layers, desire_layers,
@@ -129,6 +195,44 @@ preprocess_test_data <- function(data, type, index_column, time_column, time_val
   return(reports)
 }
 
+#' Filter blacklist and whitelist before training bayesian network
+#'
+#' @param continuous_data A data frame which rows are financial reports and columns is KPI pre-processed
+#' @param desire_layers Number of layers for training bayesian network, less than or equal current layers
+#' @param quantile_number For type is "discrete", number of quantile for each continuous variable
+#' @param continuous_dynamic_variables Column names of continuous dynamic KPI
+#' @param continuous_static_variables Column names of continuous static (un-change over time) KPI
+#' @param discrete_static_variables Columns names of discrete static (un-change over time) KPI
+#' @param known_structure Relation between KPI specific by user
+#' @param corr_threshold Threshold for filter arcs with low correlation
+#' @param is_blacklist_internal Is blacklist all internal arcs in n-i layers (n is number layers, i = 1..n-1)
+#' @param is_variable_only Is known_structure is KPI only, without time notation
+#' @param is_blacklist_other Is blacklist all except whitelist
+#' @param custom_blacklist Blacklist specific by user
+#' @param custom_whitelist Whitelist sepcific by user
+#' @return An object with blacklist and whitelist of network
+#' @examples
+#' data("preprocessed")
+#' data("data_small")
+#' continuous_data <- preprocessed$data
+#' desire_layers <- preprocessed$desire_layers
+#' quantile_number <- preprocessed$quantile_number
+#' continuous_dynamic_variables <- preprocessed$continuous_dynamic_variables
+#' continuous_static_variables <- preprocessed$continuous_static_variables
+#' discrete_static_variables <- preprocessed$discrete_static_variables
+#' known_structure <- NULL
+#' corr_threshold <- 0.4
+#' is_blacklist_internal <- TRUE
+#' is_variable_only <- TRUE
+#' is_blacklist_other <- FALSE
+#' custom_blacklist <- NULL
+#' custom_whitelist <- NULL
+
+#' bl_wl <- tfdbn::get_continuous_structure_filter(continuous_data, desire_layers, quantile_number, continuous_dynamic_variables,
+#'                                                 continuous_static_variables, discrete_static_variables,
+#'                                                 known_structure, corr_threshold, is_blacklist_internal,
+#'                                                 is_variable_only, is_blacklist_other,
+#'                                                 custom_blacklist, custom_whitelist)
 get_continuous_structure_filter <- function(continuous_data, desire_layers, quantile_number, continuous_dynamic_variables,
                                             continuous_static_variables, discrete_static_variables,
                                             known_structure, corr_threshold, is_blacklist_internal,
@@ -149,6 +253,45 @@ get_continuous_structure_filter <- function(continuous_data, desire_layers, quan
     return(arc_structures)
 }
 
+
+#' Filter blacklist and whitelist before training bayesian network
+#'
+#' @param continuous_data A data frame which rows are financial reports and columns is KPI pre-processed
+#' @param desire_layers Number of layers for training bayesian network, less than or equal current layers
+#' @param quantile_number For type is "discrete", number of quantile for each continuous variable
+#' @param continuous_dynamic_variables Column names of continuous dynamic KPI
+#' @param continuous_static_variables Column names of continuous static (un-change over time) KPI
+#' @param discrete_static_variables Columns names of discrete static (un-change over time) KPI
+#' @param known_structure Relation between KPI specific by user
+#' @param corr_threshold Threshold for filter arcs with low correlation
+#' @param is_blacklist_internal Is blacklist all internal arcs in n-i layers (n is number layers, i = 1..n-1)
+#' @param is_variable_only Is known_structure is KPI only, without time notation
+#' @param is_blacklist_other Is blacklist all except whitelist
+#' @param custom_blacklist Blacklist specific by user
+#' @param custom_whitelist Whitelist sepcific by user
+#' @return An object with blacklist and whitelist of network
+#' @examples
+#' data("preprocessed")
+#' data("data_small")
+#' continuous_data <- preprocessed$data
+#' desire_layers <- preprocessed$desire_layers
+#' quantile_number <- preprocessed$quantile_number
+#' continuous_dynamic_variables <- preprocessed$continuous_dynamic_variables
+#' continuous_static_variables <- preprocessed$continuous_static_variables
+#' discrete_static_variables <- preprocessed$discrete_static_variables
+#' known_structure <- NULL
+#' corr_threshold <- 0.4
+#' is_blacklist_internal <- TRUE
+#' is_variable_only <- TRUE
+#' is_blacklist_other <- FALSE
+#' custom_blacklist <- NULL
+#' custom_whitelist <- NULL
+
+#' bl_wl <- tfdbn::get_continuous_structure_filter(continuous_data, desire_layers, quantile_number, continuous_dynamic_variables,
+#'                                                 continuous_static_variables, discrete_static_variables,
+#'                                                 known_structure, corr_threshold, is_blacklist_internal,
+#'                                                 is_variable_only, is_blacklist_other,
+#'                                                 custom_blacklist, custom_whitelist)
 get_discrete_structure_filter <- function(discrete_data, desire_layers, quantile_number, continuous_dynamic_variables,
                                             continuous_static_variables, discrete_static_variables,
                                             known_structure, corr_threshold, is_blacklist_internal,
@@ -170,6 +313,30 @@ get_discrete_structure_filter <- function(discrete_data, desire_layers, quantile
   return(arc_structures)
 }
 
+#' Training bayesian network
+#'
+#' @param training_type Training type, discrete or continuous
+#' @param data Data for training
+#' @param number_layers Number of bayesian network layer
+#' @param bl List of blacklist
+#' @param wl List of whitelist
+#' @param n_cluster Number of core for training
+#' @param algorithms Algorithms for learning network structure and parameters
+#' @param number_bootstrap Number of bootstrap
+#' @param debug Debug mode
+#' @return An object list of trained model and training parameters
+#' @examples
+#' data("data_small")
+#' data("preprocessed")
+#' continuous_data <- preprocessed$data
+#' desire_layers <- preprocessed$desire_layers
+#' bl <- bl_wl$blacklist
+#' wl <- bl_wl$whitelist
+#' n_cluster = 4
+#' algorithms <- c("tabu", "hc")
+#' number_bootstrap = 100
+
+#' trained <- training_model("continuous", continuous_data, number_layers, bl, wl, n_cluster, algorithms, number_bootstrap)
 training_model <- function(training_type, data, number_layers, bl, wl, n_cluster, algorithms, number_bootstrap = 100, debug = FALSE) {
   if(debug) {
     cat("Training model ", training_type, "\n")
@@ -218,6 +385,36 @@ training_model <- function(training_type, data, number_layers, bl, wl, n_cluster
   return(results)
 }
 
+#' Get sector profile
+#'
+#' @param fitted Training type, discrete or continuous
+#' @param sector_value Data for training
+#' @param sector_variable Number of bayesian network layer
+#' @param target_variables List of blacklist
+#' @param n_samples List of whitelist
+#' @param max_times Number of core for training
+#' @param n_cluster Algorithms for learning network structure and parameters
+#' @param number_bootstrap Number of bootstrap
+#' @param debug Debug mode
+#' @return An profile of KPIs for specific sector
+#' @examples
+#' data_factor <- trained$data_factors
+#' fitted <- trained$tabu$fitted
+#' data <- preprocessed$data
+#' n_cluster <- 4
+#' sector_variable <- "NGANHKT"
+#' all_variables <- c(preprocessed$continuous_dynamic_variables,
+#'                    preprocessed$continuous_static_variables,
+#'                    preprocessed$discrete_static_variables)
+#'
+#' target_variables <- setdiff(all_variables, c(sector_variable))
+#' sector_profiles <- list()
+#' for(sector in data_factor[[sector_variable]]) {
+#'   sector_id <- which(data_factor[[sector_variable]] %in% sector)
+#'
+#'   sector_profiles[[sector]] <- tfdbn::get_sector_normal(fitted, sector_id, sector_variable, target_variables,
+#'                                                         1000, 10, n_cluster)
+#' }
 get_sector_normal <- function(fitted, sector_value, sector_variable,
                               target_variables, n_samples, max_times, n_cluster, debug = FALSE) {
   if(debug) {
@@ -260,6 +457,27 @@ get_sector_normal <- function(fitted, sector_value, sector_variable,
   return(dist_total)
 }
 
+
+#' Get KPI Score
+#'
+#' @param data A list of data to calculate score, each item present a data frame of KPI values
+#' @param sector_variable Sector variable name
+#' @param sector_profiles Sector profile
+#' @param probs List of quantiles, default is probs = c(0, 0.25, 0.50, 0.75, 1)
+#' @param score_table List of score table corresponding with probs, default is score_table = c(0, 5, 20, 20, 5, 0)
+#' @param debug Debug mode
+#' @return A list of data scores, each item present a data frame of KPI scores
+#' @examples
+#' sector_variable <- "NGANHKT"
+#' probs <- c(0, 0.05, 0.95, 1)
+#' score_table <- c(0, 5, 50, 5)
+#' discrete_static_kpi_names <- preprocessed$discrete_static_variables
+#' data_scores <- tfdbn::calculate_kpi_score(test_data, sector_variable, sector_profiles, probs, score_table)
+#'
+#' data_id <- names(data_scores)
+#' for(id in data_id) {
+#'   anomally_kpi <- get_anomally_kpi(data_scores[[id]], 5)
+#' }
 calculate_kpi_score <- function(data, sector_variable, sector_profiles,
                                 probs = c(0, 0.25, 0.50, 0.75, 1),
                                 score_table = c(0, 5, 20, 20, 5, 0),
@@ -312,19 +530,38 @@ calculate_kpi_score <- function(data, sector_variable, sector_profiles,
   return(data_scores)
 }
 
+#' Get anomaly KPI probabilities
+#'
+#' @param fitted A list of data to calculate score, each item present a data frame of KPI values
+#' @param data_test A list of data to calculate score, each item present a data frame of KPI values
+#' @param data_score A list of data to calculate score, each item present a data frame of KPI scores
+#' @param sector_variable Sector variable name
+#' @param except_variables List of variables to ignore
+#' @param sector_factor Sector in string
+#' @param sector_profile Sector KPI profile
+#' @param kpi_score_threshold Threshold
+#' @param probs List of quantiles, default is probs = c(0, 0.25, 0.50, 0.75, 1)
+#' @param n_cluster Number of CPU to calculate
+#' @param n_times Number of calculation
+#' @param debug Debug mode
+#' @return A list of data scores, each item present a data frame of KPI scores
+#' @examples
+#' sector_variable <- "NGANHKT"
+#'
+#' data_probs <- tfdbn::calculate_prob_score(fitted, test_data, data_scores, sector_variable, c("VON", "TUOI"), data_factor[[sector_variable]], sector_profiles, 5, c(0, 0.05, 0.95, 1), 4, 5)
 calculate_prob_score <- function(fitted, data_test, data_score, sector_variable, except_variables,
                                  sector_factor, sector_profile, kpi_score_threshold, probs,
                                  n_cluster = 4, n_times = 10, debug = FALSE) {
   data_prob <- list()
-  cluster <- parallel::makeCluster(cluster)
+  cluster <- parallel::makeCluster(n_cluster)
   all_id <- names(data_test)
   for(id in all_id) {
-    print(id)
+
     data_id <- data_test[[id]]
 
     sector <- as.character(data_id[, sector_variable])
     sector_id <- which(sector_factor %in% sector)
-    print(sector_id)
+
     if(length(sector_id) != 0) {
       anomally_kpi <- get_anomally_kpi(data_scores[[id]], kpi_score_threshold)
       anomally_kpi <- setdiff(anomally_kpi, except_variables)
