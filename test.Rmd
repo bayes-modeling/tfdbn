@@ -6,7 +6,7 @@ output: html_notebook
 ## Test preprocess data
 ```{r}
 library(tfdbn)
-data("data_big")
+data("data_small")
 type <- "continuous"
 index_column <- "MST"
 time_column <- "NAM"
@@ -20,7 +20,7 @@ quantile_number = -1
 
 head(data)
 
-preprocessed <- preprocess_training_data(data_big, type, index_column, time_column, time_values,
+preprocessed <- preprocess_training_data(data_small, type, index_column, time_column, time_values,
                        continuous_kpi_names, continuous_static_kpi_names, 
                        discrete_static_kpi_names, current_layers, desire_layers, quantile_number)
 

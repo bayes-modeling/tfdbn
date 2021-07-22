@@ -1,5 +1,6 @@
 export(preprocess_training_data)
 export(preprocess_test_data)
+export(get_sector_normal)
 export(get_continuous_structure_filter)
 export(get_discrete_structure_filter)
 export(training_model)
