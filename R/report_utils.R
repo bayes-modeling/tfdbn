@@ -26,6 +26,26 @@ remove_redundant_variables <- function(data, variables, debug = FALSE) {
   return(data)
 }
 
+reconstruct_test_data <- function(data, type, index_column, time_column, time_values,
+                                     continuous_kpi_names, continuous_static_kpi_names, discrete_static_kpi_names, layers,
+                                     normalize_type = NULL, normalizers = NULL, factors = NULL, debug = FALSE) {
+
+
+  if(debug)
+    cat("Reconstruct data with dim", dim(data), "and normalize type", normalize_type, "\n")
+  data <- data[, c(index_column, time_column, continuous_kpi_names, continuous_static_kpi_names, discrete_static_kpi_names)]
+  index_values <- unique(data[, index_column])
+  data_constructed <- reconstruct_report_data(data, index_column, index_values, time_column, time_values, layers, debug)
+
+  if(debug)
+    cat("Reconstruct data with dim", dim(data), "and normalize type", normalize_type, "completed", "\n")
+  if(is.null(normalizers) | is.null(normalize_type)) {
+    return(data_constructed)
+  } else {
+    return(normalize_data(data_constructed, normalize_type, normalizers)$data)
+  }
+}
+
 reconstruct_report_data <- function(data, index, index_values, time_column, time_values, current_layers, debug = FALSE) {
   cols <- colnames(data)
 
@@ -37,10 +57,6 @@ reconstruct_report_data <- function(data, index, index_values, time_column, time
   f <- new_cols
 
   for(i in 1:length(index_values)) {
-    process = i*100/length(index_values)
-    if(i %% 100 == 0) {
-      print(process)
-    }
 
     index_value <- index_values[i]
     index_data <- data[data[, index] == index_value, ]
@@ -48,7 +64,14 @@ reconstruct_report_data <- function(data, index, index_values, time_column, time
     row <- c()
 
     for (time_value in time_values) {
-      row <- c(row, index_data[index_data[, time_column] == time_value, ])
+      time_data <- index_data[index_data[, time_column] == time_value, ]
+
+      if(nrow(time_data) == 0) {
+        row <- c(row, rep(NA, ncol(index_data)))
+      } else {
+        row <- c(row, as.character(index_data[index_data[, time_column] == time_value, ]))
+      }
+
     }
 
     f <- rbind(f, row)
@@ -64,23 +87,24 @@ reconstruct_report_data <- function(data, index, index_values, time_column, time
 prepare_constructed_report_data <- function(data, current_layers, desire_layers,
                                             discrete_variables, continuous_variables,
                                             quantiled_variables = c(), quantile = -1,
+                                            normalize_type = NULL,
                                             na_omit = TRUE, debug = FALSE) {
-  data_dbn <- prepare_report_for_dbn(data, current_layers, desire_layers, discrete_variables, continuous_variables, na_omit, debug)
   if(length(quantile) == 1 && quantile != -1) {
-    print("binary quantile")
-    data_dbn = quantile_report_binary(data_dbn, quantiled_variables)
-  } else if(length(quantile) > 1) {
-    print("composite quantile")
-    data_dbn <- quantile_report_composite(data_dbn, quantiled_variables, quantile)
-  } else {
-    data_dbn[data_dbn == 1e10] <- NA
-    if(na_omit) {
-      data_dbn <- na.omit(data_dbn)
+    if(debug) {
+      cat("Quantile binary for data dim", dim(data))
     }
-
+    data = quantile_report_binary(data, quantiled_variables)
+  } else if(length(quantile) > 1) {
+    if(debug) {
+      cat("Quantile to", quantile[1], "levels for data dim", dim(data))
+    }
+    data <- quantile_report_composite(data, quantiled_variables, quantile)
+  } else {
+    if(na_omit) {
+      data <- na.omit(data)
+    }
   }
-
-  return(data_dbn)
+  return(data)
 }
 
 prepare_report_for_dbn <- function(data_shifted, current_layers, desire_layers, discrete_variables,
@@ -198,15 +222,11 @@ quantile_report_binary <- function(data, continuous_variables) {
 quantile_report_composite <- function(data, continuous_variables, node_quantile) {
   data_quantile <- data
   cols <- colnames(data)
-  print(cols)
-  print(node_quantile)
-  print(continuous_variables)
   breaks_list <- list()
   #TODO: check length of continuous_variables and node_quantile
   for(k in 1: length(node_quantile)) {
 
     variable <- continuous_variables[k]
-    print(variable)
     values <- data[, variable]
     na_index <- which(values == -1010101010.0)
     zero_index <- which(values == 0)
@@ -218,8 +238,6 @@ quantile_report_composite <- function(data, continuous_variables, node_quantile)
       if(length(unique(values_non_zeros)) > node_quantile[k]) {
         values_non_zeros <- scale_variables(values_non_zeros)
         breaks <- c(unique(quantile(values_non_zeros, seq(0, 1, 1/node_quantile[k]))))
-
-        print(breaks)
 
         value_max <- max(values[values > 0])
         value_min <- min(values[values > 0])
@@ -240,11 +258,6 @@ quantile_report_composite <- function(data, continuous_variables, node_quantile)
                 q = i
                 break
               }
-            }
-
-            if(q == 0) {
-              print(value)
-              print(value_scale)
             }
 
             values[j] <- paste("Q", q, sep = "")

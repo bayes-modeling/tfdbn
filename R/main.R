@@ -11,6 +11,7 @@
 #' @param current_layers Maximum number of layers in bayesian network, equal number of time values
 #' @param desire_layers Number of layers for training bayesian network, less than or equal current layers
 #' @param quantile_number For type is "discrete", number of quantile for each continuous variable
+#' @param normalize_type Normalize type, possible values are: mean_normalization, min_max or standardisation
 #' @param na_omit Is omit NA or not
 #' @param debug Debug mode
 #' @return A processed data frame with pre-process params
@@ -34,13 +35,18 @@
 #'                                          discrete_static_kpi_names, current_layers, desire_layers, quantile_number)
 preprocess_training_data <- function(data, type, index_column, time_column, time_values,
                                    continuous_kpi_names, continuous_static_kpi_names, discrete_static_kpi_names, current_layers,
-                                   desire_layers, quantile_number = -1, na_omit = TRUE, debug = FALSE) {
+                                   desire_layers, normalize_type = NULL, quantile_number = -1, na_omit = TRUE, debug = FALSE) {
 
 
+  #Get all necessary columns
   data <- data[, c(index_column, time_column, continuous_kpi_names, continuous_static_kpi_names, discrete_static_kpi_names)]
   index_values <- unique(data[, index_column])
-  data_constructed <- reconstruct_report_data(data, index_column, index_values, time_column, time_values, current_layers, debug)
 
+  #Reconstruct data to one row
+  data_constructed <- reconstruct_report_data(data, index_column, index_values, time_column, time_values, current_layers, debug)
+  data_constructed <- convert_data_type(data_constructed, c(continuous_kpi_names, continuous_static_kpi_names), discrete_static_kpi_names)
+
+  #Generate continuous columns with time notation
   continuous_dynamic_variables <- c()
   for(name in c(continuous_kpi_names)) {
     continuous_dynamic_variables <- c(continuous_dynamic_variables, c(paste(name, 1:current_layers, sep = "_")))
@@ -53,16 +59,30 @@ preprocess_training_data <- function(data, type, index_column, time_column, time
 
   continuous_variables <- c(continuous_dynamic_variables, continuous_static_variables)
 
+  #Generate discrete columns with time notation
   discrete_variables <- c()
   for(name in discrete_static_kpi_names) {
     discrete_variables <- c(discrete_variables, c(paste(name, 1:current_layers, sep = "_")))
   }
 
+  #Exclude index and time columns
   data_constructed <- data_constructed[, c(continuous_variables, discrete_variables)]
 
+  #Generate continuous dynamic variables
   continuous_dynamic_desire_variables <- c()
   for(name in c(continuous_kpi_names)) {
     continuous_dynamic_desire_variables <- c(continuous_dynamic_desire_variables, c(paste(name, 1:desire_layers, sep = "_")))
+  }
+
+  #Reconstruct data frame to desire layers
+  data_constructed <- prepare_report_for_dbn(data_constructed, current_layers, desire_layers, discrete_variables, continuous_variables, na_omit, debug)
+  data_constructed <- remove_redundant_variables(data_constructed, c(continuous_static_kpi_names, discrete_static_kpi_names), debug)
+  #Normalize data
+  normalizers <- NULL
+  if(!is.null(normalize_type)) {
+    data_normalized <- normalize_data(data_constructed, normalize_type)
+    data_constructed <- data_normalized$data
+    normalizers <- data_normalized$normalizers
   }
 
   result <- list()
@@ -77,6 +97,8 @@ preprocess_training_data <- function(data, type, index_column, time_column, time
   result[["time_column"]] <- time_column
   result[["time_values"]] <- time_values
   result[["type"]] <- type
+  result[["normalizers"]] <- normalizers
+  result[["normalize_tye"]] <- normalize_type
   if(type == "discrete") {
     quantiled_variables <- c()
 
@@ -93,10 +115,10 @@ preprocess_training_data <- function(data, type, index_column, time_column, time
 
     if(quantile_number > 1) {
 
-      result[["data"]] <- remove_redundant_variables(data_discrete_dbn[[1]], c(continuous_static_kpi_names, discrete_static_kpi_names), debug)
+      result[["data"]] <- data_discrete_dbn[[1]]
       result[["break_list"]] <- data_discrete_dbn[[2]]
     } else {
-      result[["data"]] <- remove_redundant_variables(data_discrete_dbn[[1]], c(continuous_static_kpi_names, discrete_static_kpi_names))
+      result[["data"]] <- data_discrete_dbn[[1]]
     }
 
     return(result)
@@ -123,6 +145,8 @@ preprocess_training_data <- function(data, type, index_column, time_column, time
 #' @param discrete_static_kpi_names Columns names of discrete static (un-change over time) KPI
 #' @param current_layers Maximum number of layers in bayesian network, equal number of time values
 #' @param desire_layers Number of layers for training bayesian network, less than or equal current layers
+#' @param normalize_type Normalize type, possible values are: mean_normalization, min_max or standardisation
+#' @param normalizers Normalizer for each variable
 #' @param quantile_number For type is "discrete", number of quantile for each continuous variable
 #' @param debug Debug mode
 #' @return A processed data frame with pre-process params
@@ -146,6 +170,7 @@ preprocess_training_data <- function(data, type, index_column, time_column, time
 preprocess_test_data <- function(data, type, index_column, time_column, time_values,
                                   continuous_kpi_names, continuous_static_kpi_names,
                                   discrete_static_kpi_names, current_layers, desire_layers,
+                                  normalize_type = NULL, normalizers = NULL,
                                   quantile_number = -1, debug = FALSE) {
 
   if(debug) {
@@ -171,15 +196,22 @@ preprocess_test_data <- function(data, type, index_column, time_column, time_val
       layer_times <- time_values[i:(i + desire_layers - 1)]
       a_report <- data[data[, index_column] == id & data[, time_column] %in% layer_times, ]
 
-      a_report_preprocessed <- tfdbn::preprocess_training_data(a_report, type, index_column, time_column, layer_times,
-                                                               continuous_kpi_names, continuous_static_kpi_names,
-                                                               discrete_static_kpi_names,
-                                                               desire_layers, desire_layers, quantile_number, FALSE)
+      a_report_preprocessed <- reconstruct_test_data(a_report, type, index_column, time_column, layer_times,
+                                                           continuous_kpi_names, continuous_static_kpi_names,
+                                                           discrete_static_kpi_names,
+                                                           desire_layers,
+                                                           normalize_type, normalizers, quantile_number, debug = debug)
+      a_report_preprocessed <- convert_data_type(a_report_preprocessed, c(continuous_kpi_names, continuous_static_kpi_names), discrete_static_kpi_names)
+      a_report_preprocessed <- remove_redundant_variables(a_report_preprocessed, c(continuous_static_kpi_names, discrete_static_kpi_names))
+
+      if(!is.null(normalize_type) & !is.null(normalizers)) {
+        a_report_preprocessed <- normalize_data(a_report_preprocessed, normalize_type, normalizers)$data
+      }
       if(debug) {
         cat("Preprocess data test for", id, "in layer", i, "completed", "\n")
       }
 
-      reports[[paste(paste(layer_times, collapse = "_"), as.character(id), sep = "_")]] <- a_report_preprocessed$data
+      reports[[paste(paste(layer_times, collapse = "_"), as.character(id), sep = "_")]] <- a_report_preprocessed
     }
     if(debug) {
       cat("Preprocess data test for", id, "completed", "\n")
@@ -429,7 +461,7 @@ get_sector_normal <- function(fitted, sector_value, sector_variable,
     nodes <- generate_dist_node(target_variables)
     evidence_equation <- generate_sector_equation(sector_value, sector_variable, 0.5)
     dist_equation <- paste(paste("bnlearn::cpdist(fitted, ", nodes, ", ", evidence_equation, ", cluster=cl)", sep = ""))
-    #print(dist_equation)
+
     dist <- eval(parse(text=dist_equation))
 
     if(is.null(dist_total)) {
@@ -592,6 +624,8 @@ calculate_prob_score <- function(fitted, data_test, data_score, sector_variable,
 
 
         data_prob[[id]] <- mean(prob_all)
+      } else {
+        data_prob[[id]] <- 1
       }
 
     }

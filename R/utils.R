@@ -94,11 +94,52 @@ calculate_file_size <- function(object_size) {
   }
 }
 
-scale_variables <- function(values) {
-  ma <- max(values)
-  mi <- min(values)
-  values <- (values - mi)/(ma - mi)
-  return(values)
+normalize_data <- function(data, type = "mean_normalization", custom_normalizers = NULL) {
+  cols <- colnames(data)
+
+  normalizers <- list()
+
+  for(col in cols) {
+    values <- data[, col]
+
+    if(is.numeric(values)) {
+      values <- values[which(!is.na(values))]
+      normalizer <- NULL
+
+      if(is.null(custom_normalizers)
+         | is.null(custom_normalizers[[col]])) {
+        normalizer <- get_normalizer(values)
+      } else {
+        normalizer <- custom_normalizers[[col]]
+      }
+
+      normalizers[[col]] <- normalizer
+      if(type == "mean_normalization") {
+        data[, col] <- (data[, col] - normalizer[["mean"]]) / (normalizer[["max"]] - normalizer[["min"]])
+      } else if(type == "min_max") {
+        data[, col] <- (data[, col] - normalizer[["min"]]) / (normalizer[["max"]] - normalizer[["min"]])
+      } else if(type == "standardisation") {
+        data[, col] <- (data[, col] - normalizer[["mean"]]) / sd[["min"]]
+      }
+    }
+  }
+
+  result <- list()
+  result[["data"]] <- data
+  result[["normalizers"]] <- normalizers
+
+  return(result)
+}
+
+get_normalizer <- function(values) {
+  normalizer <- list()
+
+  normalizer[["mean"]] <- mean(values)
+  normalizer[["min"]] <- min(values)
+  normalizer[["sd"]] <- sd(values)
+  normalizer[["max"]] <- max(values)
+
+  return(normalizer)
 }
 
 filter_data <- function(data, filter_columns, filter_values, filter_operation) {
@@ -187,6 +228,18 @@ remove_bias_variables <- function(data, pattern, threshold) {
   if(length(remove_col_index) != 0) {
     return(data[, -remove_col_index])
   }
+  return(data)
+}
+
+convert_data_type <- function(data, continuous_columns, discrete_columns) {
+  data_cols <- colnames(data)
+  for(continuous_col in continuous_columns) {
+    time_cols <- grep(continuous_col, data_cols, value = TRUE)
+    for(time_col in time_cols) {
+      data[, time_col] <- as.numeric(data[, time_col])
+    }
+  }
+
   return(data)
 }
 
