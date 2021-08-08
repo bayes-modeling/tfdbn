@@ -142,7 +142,7 @@ prepare_report_for_dbn <- function(data_shifted, current_layers, desire_layers, 
   }
 
   if(debug) {
-    cat("Prepare data for dbn with dim", dim(data_shifted), "completed", "\n")
+    cat("Prepare data for dbn with dim", dim(data), "completed", "\n")
   }
 
   return(data)

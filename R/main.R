@@ -16,7 +16,8 @@
 #' @param debug Debug mode
 #' @return A processed data frame with pre-process params
 #' @examples
-#' data("data_big")
+#' library(tfdbn)
+#' data("data_small")
 #' type <- "continuous"
 #' index_column <- "MST"
 #' time_column <- "NAM"
@@ -27,12 +28,12 @@
 #' current_layers = 3
 #' desire_layers = 2
 #' quantile_number = -1
-
-#' head(data)
-
-#' preprocessed <- preprocess_training_data(data_big, type, index_column, time_column, time_values,
-#'                                          continuous_kpi_names, continuous_static_kpi_names,
-#'                                          discrete_static_kpi_names, current_layers, desire_layers, quantile_number)
+#'
+#' head(data_small)
+#'
+#' preprocessed <- tfdbn::preprocess_training_data(data_small, type, index_column, time_column, time_values,
+#'                                                 continuous_kpi_names, continuous_static_kpi_names,
+#'                                                 discrete_static_kpi_names, current_layers, desire_layers, "min_max", quantile_number,debug = TRUE)
 preprocess_training_data <- function(data, type, index_column, time_column, time_values,
                                    continuous_kpi_names, continuous_static_kpi_names, discrete_static_kpi_names, current_layers,
                                    desire_layers, normalize_type = NULL, quantile_number = -1, na_omit = TRUE, debug = FALSE) {
@@ -124,9 +125,7 @@ preprocess_training_data <- function(data, type, index_column, time_column, time
     return(result)
 
   } else if(type == "continuous"){
-    data_continuous_dbn <- prepare_constructed_report_data(data_constructed, current_layers, desire_layers,
-                                                           discrete_variables, continuous_variables, c(), quantile_number, na_omit, debug)
-    result[["data"]] <- remove_redundant_variables(data_continuous_dbn, c(continuous_static_kpi_names, discrete_static_kpi_names))
+    result[["data"]] <- data_constructed
     return(result)
   } else {
     result <- list()
@@ -151,9 +150,10 @@ preprocess_training_data <- function(data, type, index_column, time_column, time
 #' @param debug Debug mode
 #' @return A processed data frame with pre-process params
 #' @examples
-#' data("preprocessed")
-#' data("data_small")
+#' library(tfdbn)
 #' type <- preprocessed$type
+#' normalize_type <- preprocessed$normalize_tye
+#' normalizers <- preprocessed$normalizers
 #' index_column <- preprocessed$index_column
 #' time_column <- preprocessed$time_column
 #' time_values <- preprocessed$time_values
@@ -163,10 +163,10 @@ preprocess_training_data <- function(data, type, index_column, time_column, time
 #' current_layers <- preprocessed$current_layers
 #' desire_layers <- preprocessed$desire_layers
 #' quantile_number <- -1
-
-#' test_data <- tfdbn::preprocess_test_data(data, type, index_column, time_column, time_values,
+#'
+#' data_test <- tfdbn::preprocess_test_data(data_small, type, index_column, time_column, time_values,
 #'                                          continuous_kpi_names, continuous_static_kpi_names,
-#'                                          discrete_static_kpi_names, current_layers, desire_layers, quantile_number)
+#'                                          discrete_static_kpi_names, current_layers, desire_layers, normalize_type, normalizers, quantile_number, debug = FALSE)
 preprocess_test_data <- function(data, type, index_column, time_column, time_values,
                                   continuous_kpi_names, continuous_static_kpi_names,
                                   discrete_static_kpi_names, current_layers, desire_layers,

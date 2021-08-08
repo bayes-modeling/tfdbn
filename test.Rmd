@@ -26,7 +26,7 @@ head(data_small)
 
 preprocessed <- tfdbn::preprocess_training_data(data_small, type, index_column, time_column, time_values,
                        continuous_kpi_names, continuous_static_kpi_names, 
-                       discrete_static_kpi_names, current_layers, desire_layers, "min_max", quantile_number)
+                       discrete_static_kpi_names, current_layers, desire_layers, "min_max", quantile_number,debug = TRUE)
 
 ```
 
@@ -122,7 +122,7 @@ sector_variable <- "NGANHKT"
 probs <- c(0, 0.05, 0.95, 1)
 score_table <- c(0, 5, 50, 5)
 discrete_static_kpi_names <- preprocessed$discrete_static_variables
-data_scores <- tfdbn::calculate_kpi_score(test_data, sector_variable, sector_profiles, probs, score_table)
+data_scores <- tfdbn::calculate_kpi_score(data_test, sector_variable, sector_profiles, probs, score_table)
 
 data_id <- names(data_scores)
 for(id in data_id) {
@@ -135,7 +135,7 @@ for(id in data_id) {
 library(tfdbn)
 sector_variable <- "NGANHKT"
 
-data_probs <- tfdbn::calculate_prob_score(fitted, test_data, data_scores, sector_variable, c("VON", "TUOI"), data_factor[[sector_variable]], sector_profiles, 5, c(0, 0.05, 0.95, 1), 4, 5)
+data_probs <- tfdbn::calculate_prob_score(fitted, data_test, data_scores, sector_variable, c("VON", "TUOI"), data_factor[[sector_variable]], sector_profiles, 5, c(0, 0.05, 0.95, 1), 4, 5)
 
 print(data_probs)
 ```
