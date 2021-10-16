@@ -120,7 +120,7 @@ prepare_report_for_dbn <- function(data_shifted, current_layers, desire_layers, 
     }
 
     for(discrete_variable in discrete_variables) {
-      data_shifted[, discrete_variable] <- factor(as.character(data_shifted[, discrete_variable]))
+      data_shifted[, discrete_variable] <- as.character(data_shifted[, discrete_variable])
     }
   }
 

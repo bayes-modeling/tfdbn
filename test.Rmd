@@ -7,15 +7,15 @@ output: html_notebook
 ### cd to tfdbn source code folder
 ### run command devtool::install(".")
 
-## Test preprocess data
-```{r}
+## Dữ liệu và tiền xử lí dữ liệu
+```{r warning=FALSE}
 library(tfdbn)
 data("data_small")
 type <- "continuous"
 index_column <- "MST"
 time_column <- "NAM"
 time_values <- 2017:2019
-continuous_kpi_names <- paste("K_C_V0", 1:9, sep = "")
+continuous_kpi_names <- c(paste("K_C_V0", 1:9, sep = ""), paste("K_C_V", 10:34, sep = ""))
 continuous_static_kpi_names <- c("TUOI", "VON")
 discrete_static_kpi_names <- c("NGANHKT")
 current_layers = 3
@@ -26,13 +26,16 @@ head(data_small)
 
 preprocessed <- tfdbn::preprocess_training_data(data_small, type, index_column, time_column, time_values,
                        continuous_kpi_names, continuous_static_kpi_names, 
-                       discrete_static_kpi_names, current_layers, desire_layers, "min_max", quantile_number,debug = TRUE)
+                       discrete_static_kpi_names, current_layers, desire_layers, "min_max", quantile_number,debug = FALSE)
+```
 
+## Cấu trúc dữ liệu sau khi được tiền xử lí
+```{r}
+print(preprocessed$data)
 ```
 
 
-
-## Test filter blacklist and whitelist
+## Lọc blacklist và whitelist trong mạng
 ```{r}
 library(tfdbn)
 continuous_data <- preprocessed$data
@@ -56,7 +59,25 @@ bl_wl <- tfdbn::get_continuous_structure_filter(continuous_data, desire_layers, 
                                             custom_blacklist, custom_whitelist)
 ```
 
-## Test training
+## Cấu trúc mạng ban đầu
+```{r}
+library(dplyr)
+library(visNetwork)
+
+
+number_layers <- preprocessed$desire_layers
+
+wl <- bl_wl$whitelist
+all_variables <- unique(c(wl[, "from"], wl[, "to"]))
+groups <- tfdbn::get_group(all_variables)
+
+vis_nodes <- data.frame(id = all_variables, label = all_variables, group = groups)
+vis_edges <- data.frame(from = wl[, "from"], to = wl[, "to"], arrows.to.type = "arrow")
+visNetwork(vis_nodes, width = "100%", height = "100vh", vis_edges, main = "Figure: Initial Network") %>% visIgraphLayout(type = "full", layout = "layout_with_sugiyama", layers = groups)
+```
+
+
+## Huấn luyện mô hình
 ```{r}
 library(tfdbn)
 library(parallel)
@@ -65,37 +86,41 @@ desire_layers <- preprocessed$desire_layers
 bl <- bl_wl$blacklist
 wl <- bl_wl$whitelist
 n_cluster = 4
-algorithms <- c("tabu", "hc")
-number_bootstrap = 100
+algorithms <- c("tabu")
+number_bootstrap = 10
 
-trained <- training_model("continuous", continuous_data, number_layers, bl, wl, n_cluster, algorithms, number_bootstrap, debug = TRUE)
+trained <- tfdbn::training_model("continuous", continuous_data, number_layers, bl, wl, n_cluster, algorithms, number_bootstrap, debug = TRUE)
 ```
-#Test generate sample
+## Các chỉ số chính của mô hình sau khi huấn luyện với target là K_C_V18
+```{r}
+library(tfdbn)
+model <- trained$tabu
+model_kpi <- tfdbn::get_model_kpi(model, "K_C_V18_2")
+print(model_kpi)
+```
+
+## Cấu trúc mạng liên quan đến KPI K_C_V18
+```{r}
+library(dplyr)
+library(visNetwork)
+
+target_variable <- "K_C_V18"
+
+number_layers <- preprocessed$desire_layers
+model <- trained["tabu"]
+wl <- trained$tabu$dyn.avg$arcs
+wl <- tfdbn::filter_graph_by_target(target_variable, wl)
+all_variables <- unique(c(wl[, "from"], wl[, "to"]))
+groups <- tfdbn::get_group(all_variables)
+
+vis_nodes <- data.frame(id = all_variables, label = all_variables, group = groups)
+vis_edges <- data.frame(from = wl[, "from"], to = wl[, "to"], arrows.to.type = "arrow")
+visNetwork(vis_nodes, width = "100%", height = "100vh", vis_edges, main = "Figure: KPI K_C_V18 Network") %>% visIgraphLayout(type = "full", layout = "layout_with_sugiyama", layers = groups)
+```
+## Tạo company profile theo giá trị KPI K_C_V18
 ```{r}
 library(tfdbn)
 library(bnlearn)
-
-data_factor <- trained$data_factors
-fitted <- trained$tabu$fitted
-data <- preprocessed$data
-n_cluster <- 4
-sector_variable <- "NGANHKT"
-all_variables <- c(preprocessed$continuous_dynamic_variables, 
-                      preprocessed$continuous_static_variables,
-                      preprocessed$discrete_static_variables)
-
-target_variables <- setdiff(all_variables, c(sector_variable))
-sector_profiles <- list()
-for(sector in data_factor[[sector_variable]]) {
-  sector_id <- which(data_factor[[sector_variable]] %in% sector)
-  
-  sector_profiles[[sector]] <- tfdbn::get_sector_normal(fitted, sector_id, sector_variable, target_variables, 
-                    1000, 10, n_cluster)
-}
-```
-## Test preprocess test data
-```{r}
-library(tfdbn)
 type <- preprocessed$type
 normalize_type <- preprocessed$normalize_tye
 normalizers <- preprocessed$normalizers
@@ -110,63 +135,138 @@ desire_layers <- preprocessed$desire_layers
 quantile_number <- -1
 
 data_test <- tfdbn::preprocess_test_data(data_small, type, index_column, time_column, time_values,
-                                     continuous_kpi_names, continuous_static_kpi_names,
-                                     discrete_static_kpi_names, current_layers, desire_layers, normalize_type, normalizers, quantile_number, debug = FALSE)
+                                        continuous_kpi_names, continuous_static_kpi_names,
+                                        discrete_static_kpi_names, current_layers, desire_layers, normalize_type, normalizers,
+                                        quantile_number, debug = FALSE)
+
+evidence_variables <- c("K_C_V18_2")
+target_variables <- c("K_C_V18_1", "K_C_V17_1", "K_C_V22_1", "K_C_V22_2")
+max_times <- 3
+n_samples <- 1e4
+company_profiles <- list()
+
+company_data_names <-  names(data_test)
+for(company_data_name in company_data_names) {
+  company_data <- data_test[[company_data_name]]
+  
+  evidence_data <- list()
+  for(evidence_variable in evidence_variables) {
+    if(!is.na(company_data[, evidence_variable])) {
+      evidence_data[[evidence_variable]] <- company_data[, evidence_variable]
+    }
+  }
+  
+  if(length(evidence_data) > 0) {
+    company_profiles[[company_data_name]] <- tfdbn::get_company_profiles(trained$tabu$fitted, evidence_data, target_variables,
+                                 n_samples, max_times, n_cluster, debug = FALSE)
+  } else {
+    company_profiles[[company_data_name]] <- NULL
+  }
+}
 ```
 
-## Test calculate KPI Score
+## Ví dụ KPI Profile của một công ty
+```{r}
+company_id <- names(company_profiles)[1]
+company_profile <- company_profiles[[company_id]]
+company_data <- data_test[[company_id]]
+for(kpi in colnames(company_profile)) {
+  kpi_data <- company_profile[, kpi]
+  kpi_value <- company_data[, kpi]
+  
+  plot(density(kpi_data), main = kpi, xlim = c(min(c(min(kpi_data), kpi_value)), max(c(max(kpi_data), kpi_value))))
+  abline(v = kpi_value, col = "red")
+  legend("topleft", legend = c("actual value", "profile value"), col = c("red", "black"), lty = c(1, 1))
+}
+```
+## Tính xác suất gian lận với event là biến K_C_V18, evidence là các biến liên quan gồm K_C_V17 và K_C_V22
 ```{r}
 library(tfdbn)
 
-sector_variable <- "NGANHKT"
-probs <- c(0, 0.05, 0.95, 1)
-score_table <- c(0, 5, 50, 5)
+event_variables <- c("K_C_V18_2")
+evidence_variables <- c("K_C_V18_1", "K_C_V17_1", "K_C_V22_1", "K_C_V22_2")
+actual_data <- data_test
+
+fraud_probs <- tfdbn::calculate_company_fraud_prob(trained$tabu$fitted, actual_data, event_variables, evidence_variables,
+                                 n_cluster = 4, n_times = 10, debug = FALSE)
+
+print(fraud_probs)
+```
+
+## Sắp xếp xác suất xảy ra bất thường theo thứ tự (càng nhỏ, xác suất gian lận càng cao)
+```{r}
+plot(sort(fraud_probs[, "fraud_prob"]), col = "blue", ylab = "Fraud Probability", main = "Sorted Fraud Probability", ylim = c(0, 0.2))
+```
+
+## Danh sách các công ty nghi ngờ gian lận với ngưỡng gian lận theo hình trên là < 0.1
+```{r}
+fraud_company <- fraud_probs[fraud_probs[, "fraud_prob"] <= 0.1 & fraud_probs[, "fraud_prob"] != -1, ]
+print(fraud_company)
+```
+## Ước lượng giá trị event là biến K_C_V18, evidence là các biến liên quan gồm K_C_V17 và K_C_V22
+```{r}
+library(tfdbn)
+fraud_company_ids <- fraud_company$report_id
+event_variables <- c("K_C_V18_2")
+evidence_variables <- c("K_C_V18_1", "K_C_V17_1", "K_C_V22_1", "K_C_V22_2")
+fraud_actual_data <- data_test[fraud_company_ids]
+
+predict_target_data <- tfdbn::calculate_company_target_likelihood(trained$tabu$fitted, fraud_actual_data, evidence_variables, event_variables,
+                                 n_cluster = 4, n_times = 10, debug = FALSE)
+
+print(predict_target_data)
+```
+## Các công ty có sự chênh lệch lớn nhất
+```{r}
+diff <- abs(as.numeric(predict_target_data$K_C_V18_2_actual) - as.numeric(predict_target_data$K_C_V18_2_mean))
+diff_threshold <- quantile(diff, 0.90)
+rows <- which(diff >= diff_threshold)
+
+predict_target <- predict_target_data[rows, -1]
+for(i in 1:ncol(predict_target)) {
+  predict_target[, i] <- as.numeric(predict_target[, i])
+}
+predict_target <- t(predict_target)
+barplot(predict_target, xlab = "", col = c("darkblue", "red"), names.arg = predict_target_data$id[rows], legend = rownames(predict_target), beside=TRUE, las = 2)
+```
+
+## Tính toán KPI Score cho các công ty bị nghi ngờ
+```{r}
+library(tfdbn)
+
+probs <- c(0, 0.25, 0.50, 0.75, 1)
+score_table <- c(0, 5, 50, 50, 5)
+
+fraud_report_ids <- fraud_company[, "report_id"]
+fraud_company_data <- list()
+for(id in fraud_report_ids) {
+  fraud_company_data[[id]] <- data_test[[id]]
+}
+  
 discrete_static_kpi_names <- preprocessed$discrete_static_variables
-data_scores <- tfdbn::calculate_kpi_score(data_test, sector_variable, sector_profiles, probs, score_table)
+data_scores <- tfdbn::calculate_company_kpi_score(fraud_company_data, company_profiles, probs, score_table, debug=FALSE)
 
-data_id <- names(data_scores)
-for(id in data_id) {
-  anomally_kpi <- get_anomally_kpi(data_scores[[id]], 5)
-}
+print(data_scores)
 ```
 
-## Test Prob Score
+
+## Tính toán điểm xác suất cho từng KPI với evidence là K_C_V18
 ```{r}
 library(tfdbn)
-sector_variable <- "NGANHKT"
 
-data_probs <- tfdbn::calculate_prob_score(fitted, data_test, data_scores, sector_variable, c("VON", "TUOI"), data_factor[[sector_variable]], sector_profiles, 5, c(0, 0.05, 0.95, 1), 4, 5)
-
-print(data_probs)
-```
-
-```{r}
-all <- names(data_scores)
-rows <- 1:3
-for(id in all) {
-  kpi_score <- sum(as.numeric(data_scores[[id]][1, ]))
-  prob_score <- 1
-  
-  if(!is.null(data_probs[[id]])) {
-    prob_score <- data_probs[[id]]
-  }
-  
-  anomally_score <- get_anomally_kpi(data_scores[[id]], 5)
-  anomally_kpi_string <- "-"
-  if(length(anomally_score) != 0) {
-    anomally_kpi_string <- paste(anomally_kpi, collapse = " ,")
-  }
-  
-  rows <- rbind(rows, c(kpi_score, prob_score, anomally_kpi_string))
+evidence_variables <- c("K_C_V18_2")
+event_variables <- c("K_C_V18_1", "K_C_V17_1", "K_C_V22_1", "K_C_V22_2")
+fraud_report_ids <- fraud_company[, "report_id"]
+fraud_company_data <- list()
+for(id in fraud_report_ids) {
+  fraud_company_data[[id]] <- data_test[[id]]
 }
 
-rows <- rows[-1, ]
-rownames(rows) <- all
-colnames(rows) <- c("KPI Score", "Prob Score", "Anomally KPI")
+data_prob_scores <- tfdbn::calculate_company_prob_score(trained$tabu$fitted, fraud_company_data, event_variables, evidence_variables,
+                                 n_cluster = 4, n_times = 10, debug = FALSE)
 
-write.csv(rows, "test.csv")
+print(data_prob_scores)
 ```
-
 
 
 

@@ -65,7 +65,7 @@ convert_variables_to_factor <- function(data) {
       data_factors[[data_col]] <- levels(data_factor)
       data[, data_col] <- as.numeric(data_factor)
     } else if(is.integer(data[, data_col])) {
-      data_factor <- as.factor(data[, data_col])
+      data_factor <- as.factor(as.character(data[, data_col]))
       data_factors[[data_col]] <- levels(data_factor)
       data[, data_col] <- as.numeric(data_factor)
     } else if(is.factor(data[, data_col])){

@@ -489,6 +489,43 @@ get_sector_normal <- function(fitted, sector_value, sector_variable,
   return(dist_total)
 }
 
+get_company_profiles <- function(fitted, evidence_data, target_variables,
+                                 n_samples, max_times, n_cluster, debug = FALSE) {
+  if(debug) {
+    cat("Get company profiles by evidence from", names(evidence_data), "for targets", target_variables, "\n")
+  }
+
+  cl <- parallel::makeCluster(n_cluster)
+  dist_total <- NULL
+  nth_sample <- 0
+  for(i in 1:max_times) {
+    dist <- bnlearn::cpdist(fitted, nodes = target_variables, evidence = as.list(evidence_data), method = "lw")
+
+    if(is.null(dist_total)) {
+      dist_total <- dist
+    } else {
+      dist_total <- rbind(dist_total, dist)
+    }
+
+    nth_sample <- nth_sample + 1
+
+    if((!is.null(dist_total) & nrow(dist_total) >= n_samples)
+       | nth_sample > max_times) {
+      break
+    }
+  }
+
+  parallel::stopCluster(cl)
+
+  if(debug) {
+    cat("Get company profiles by evidence from", colnames(evidence_data),
+        "for targets", target_variables, "completed with", nrow(dist_total), "sample", "\n")
+  }
+
+
+  return(dist_total)
+}
+
 
 #' Get KPI Score
 #'
@@ -562,6 +599,63 @@ calculate_kpi_score <- function(data, sector_variable, sector_profiles,
   return(data_scores)
 }
 
+calculate_company_kpi_score <- function(actual_data, profile_data,
+                                probs = c(0, 0.25, 0.50, 0.75, 1),
+                                score_table = c(0, 5, 20, 20, 5, 0),
+                                debug = FALSE) {
+  if(length(probs) != length(score_table)) {
+    cat(file = stderr(), "Probs and score length is not match", "\n")
+    return(NULL)
+  }
+  if(debug) {
+    cat(file = stdout(), "Calculate company kpi score", "\n")
+  }
+
+  data_scores <- list()
+  all_id <- names(actual_data)
+  for(id in all_id) {
+    if(debug) {
+      cat(file = stdout(), "Calculate company kpi score for", id, "\n")
+    }
+
+    company_data <- actual_data[[id]]
+    company_profile <- profile_data[[id]]
+    if(is.null(company_profile)) {
+      break
+    }
+    profile_kpi <- colnames(company_profile)
+
+    kpi_scores <- c()
+    for(kpi in profile_kpi) {
+      kpi_profile <- company_profile[, kpi]
+      kpi_quantile <- quantile(kpi_profile, probs)
+
+      kpi_value <- company_data[, kpi]
+
+      kpi_score <- get_kpi_score(kpi_value, kpi_quantile, score_table)
+
+      kpi_scores <- c(kpi_scores, kpi_score)
+    }
+    data_score <- rbind(profile_kpi, kpi_scores)
+    data_score <- data.frame(data_score)
+    data_score <- data_score[-1, ]
+    colnames(data_score) <- profile_kpi
+
+    data_scores[[id]] <- data_score
+    if(debug) {
+      cat(file = stdout(), "Calculate kpi score for", id, "completed", "\n")
+    }
+
+  }
+
+  if(debug) {
+    cat(file = stdout(), "Calculate kpi score", "completed", "\n")
+  }
+
+
+  return(data_scores)
+}
+
 #' Get anomaly KPI probabilities
 #'
 #' @param fitted A list of data to calculate score, each item present a data frame of KPI values
@@ -602,12 +696,17 @@ calculate_prob_score <- function(fitted, data_test, data_score, sector_variable,
         lower <- c()
 
         for(kpi in anomally_kpi) {
+
           kpi_value <- data_id[, kpi]
+
           kpi_profile <- sector_profile[[sector]][, kpi]
 
           kpi_range <- get_kpi_range_around_value(kpi_value, kpi_profile, probs)
 
-          kpi_ranges[[kpi]] <- kpi_range
+          if(!is.null(kpi_range)) {
+            kpi_ranges[[kpi]] <- kpi_range
+          }
+
         }
 
         event_equation <- generate_continuous_equation(anomally_kpi, "event", kpi_ranges)
@@ -634,6 +733,206 @@ calculate_prob_score <- function(fitted, data_test, data_score, sector_variable,
 
   parallel::stopCluster(cluster)
   return(data_prob)
+}
+
+calculate_company_prob_score <- function(fitted, actual_data, event_variables, evidence_variables,
+                                 n_cluster = 4, n_times = 10, debug = FALSE) {
+  if(debug) {
+    cat(file = stdout(), "Calculate company probability score by event", event_variables,
+        "and evidence variables", evidence_variables, "\n")
+  }
+  data_prob <- list()
+  cluster <- parallel::makeCluster(n_cluster)
+  all_id <- names(actual_data)
+  for(id in all_id) {
+    if(debug) {
+      cat(file = stdout(), "Calculate company probability for company", id, "\n")
+    }
+    company_data <- actual_data[[id]]
+    company_prob_scores <- c(event_variables)
+
+    evidence_data <- list()
+    for(evidence_variable in evidence_variables) {
+      evidence_data[evidence_variable] <- company_data[, evidence_variable]
+    }
+
+    event_probs <- c()
+    for(event_variable in event_variables) {
+      if(debug) {
+        cat(file = stdout(), "Calculate company probability for company", id, "with event", event_variable, "\n")
+      }
+      if(is.na(company_data[, event_variable])) {
+        event_probs <- c(event_probs, -1)
+      } else {
+        event_data <- list()
+        event_data[event_variable] <- company_data[, event_variable]
+        event_equation <- generate_continuous_equation_2(event_variable, "event", company_data[, event_variable])
+        evidence_equation <- generate_continuous_equation_2(evidence_variables, "evidence", as.numeric(company_data[, evidence_variables]))
+        query <- paste("bnlearn::cpquery(fitted, ", event_equation, ", ", evidence_equation, ", cluster=cluster, n = 1e4)", sep = "")
+
+        prob_all <- c()
+        for(i in 1:n_times) {
+          prob <- eval(parse(text=query))
+          prob_all <- c(prob_all, prob)
+        }
+        event_probs <- c(event_probs, round(mean(prob), 3))
+      }
+      if(debug) {
+        cat(file = stdout(), "Calculate company probability for company", id, "with event", event_variable, "completed", "\n")
+      }
+    }
+
+    company_prob_scores <- rbind(company_prob_scores, event_probs)
+    company_prob_scores <- as.data.frame(company_prob_scores)
+    company_prob_scores <- company_prob_scores[-1, ]
+    colnames(company_prob_scores) <- event_variables
+    data_prob[[id]] <- company_prob_scores
+    if(debug) {
+      cat(file = stdout(), "Calculate company probability for company", id, "completed", "\n")
+    }
+  }
+
+  parallel::stopCluster(cluster)
+  return(data_prob)
+}
+
+calculate_company_fraud_prob <- function(fitted, actual_data, event_variables, evidence_variables,
+                                         n_cluster = 4, n_times = 10, debug = FALSE) {
+  if(debug) {
+    cat(file = stdout(), "Calculate fraud probability score by event", event_variables,
+        "and evidence variables", evidence_variables, "\n")
+  }
+  data_prob <- 1:2
+  cluster <- parallel::makeCluster(n_cluster)
+  all_id <- names(actual_data)
+  for(id in all_id) {
+    if(debug) {
+      cat(file = stdout(), "Calculate fraud probability for company", id, "\n")
+    }
+    company_data <- actual_data[[id]]
+
+    evidence_data <- list()
+    for(evidence_variable in evidence_variables) {
+      evidence_data[evidence_variable] <- company_data[, evidence_variable]
+    }
+
+    event_around_prob <- 1
+    event_upper_prob <- 1
+    event_lower_prob <- 1
+    if(sum(is.na(company_data[, event_variables])) > 0) {
+      event_prob <- -1
+    } else {
+      event_data <- list()
+      event_data[event_variables] <- company_data[, event_variables]
+      event_around_equation <- generate_continuous_equation_2(event_variables, "event", as.numeric(company_data[, event_variables]))
+      event_upper_equation <- generate_continuous_equation_2(event_variables, "event", as.numeric(company_data[, event_variables]), "upper")
+      event_lower_equation <- generate_continuous_equation_2(event_variables, "event", as.numeric(company_data[, event_variables]), "lower")
+
+      evidence_equation <- generate_continuous_equation_2(evidence_variables, "evidence", as.numeric(company_data[, evidence_variables]), " | ")
+      query_around <- paste("bnlearn::cpquery(fitted, ", event_around_equation, ", ", evidence_equation, ", cluster=cluster, n = 1e4)", sep = "")
+      query_upper <- paste("bnlearn::cpquery(fitted, ", event_upper_equation, ", ", evidence_equation, ", cluster=cluster, n = 1e4)", sep = "")
+      query_lower <- paste("bnlearn::cpquery(fitted, ", event_lower_equation, ", ", evidence_equation, ", cluster=cluster, n = 1e4)", sep = "")
+      prob_around_all <- c()
+      prob_upper_all <- c()
+      prob_lower_all <- c()
+
+      for(i in 1:n_times) {
+        prob_around <- eval(parse(text=query_around))
+        prob_upper <- eval(parse(text=query_upper))
+        prob_lower <- eval(parse(text=query_lower))
+
+        prob_around_all <- c(prob_around_all, prob_around)
+        prob_upper_all <- c(prob_around_all, prob_upper)
+        prob_lower_all <- c(prob_around_all, prob_lower)
+      }
+      event_around_prob <- round(mean(prob_around_all), 3)
+      event_upper_prob <- round(mean(prob_upper_all), 3)
+      event_lower_prob <- round(mean(prob_lower_all), 3)
+    }
+    if(debug) {
+      cat(file = stdout(), "Calculate fraud probability for company", id, "with event", event_variable, "completed", "\n")
+    }
+
+    data_prob <- rbind(data_prob, c(id, event_around_prob, event_upper_prob, event_lower_prob))
+    if(debug) {
+      cat(file = stdout(), "Calculate fraud probability for company", id, "completed", "\n")
+    }
+  }
+  data_prob <- as.data.frame(data_prob)
+  data_prob <- data_prob[-1, ]
+  colnames(data_prob) <- c("report_id", "fraud_prob", "fraud_upper_prob", "fraud_lower_prob")
+
+  parallel::stopCluster(cluster)
+  return(data_prob)
+}
+
+calculate_company_target_likelihood <- function(fitted, actual_data, evidence_variables, target_variables,
+                                         n_cluster = 4, n_times = 10, debug = FALSE) {
+  if(debug) {
+    cat(file = stdout(), "Calculate target likelihood for with event", evidence_variables, "\n")
+  }
+  keys <- names(actual_data)
+  predict_target_data <- 1:(length(target_variables) * 2 + 1)
+  for(key in keys) {
+    if(debug) {
+      cat(file = stdout(), "Calculate target likelihood for company", id, "with event", evidence_variables, "\n")
+    }
+    evidence_data <- list()
+    values <- actual_data[[key]]
+    target_actuals <- values[, target_variables]
+    for(evidence_variable in evidence_variables) {
+      evidence_value <- values[1, evidence_variable]
+      if(!is.na(evidence_value)) {
+        evidence_data[evidence_variable] <- evidence_value
+      }
+    }
+
+    target_dist <- get_company_profiles(fitted, evidence_data, target_variables, n_samples, max_times, n_cluster, debug = FALSE)
+    predict_target_data <- rbind(predict_target_data, c(key, rowMeans(target_dist), target_actuals))
+    if(debug) {
+      cat(file = stdout(), "Calculate target likelihood for company", id, "with event", evidence_variables, "completed", "\n")
+    }
+  }
+  predict_target_data <- data.frame(predict_target_data)
+  row.names(predict_target_data) <- NULL
+  predict_target_data <- predict_target_data[-1, ]
+  colnames(predict_target_data) <- c("id", paste(target_variables, "mean", sep = "_"), paste(target_variables, "actual", sep = "_"))
+  sorted_colnames <- sort(colnames(predict_target_data))
+  predict_target_data <- predict_target_data[, sorted_colnames]
+
+  if(debug) {
+    cat(file = stdout(), "Calculate target likelihood with event", evidence_variables, "completed", "\n")
+  }
+  return(predict_target_data)
+}
+
+get_model_kpi <- function(model, target_variable){
+  results <- list()
+  fitted <- model$fitted
+  target_residuals <- fitted[[target_variable]]$residuals
+
+  results['residual_mean'] <- mean(target_residuals)
+  results['residual_sd'] <- sd(target_residuals)
+
+  arcs <- model$dyn.avg$arcs
+  arcs_strength_all <- model$bootstrap
+  arcs_strength <- merge(x = arcs, arcs_strength_all, by = c("from", "to"))
+
+  target_arcs <- tfdbn::filter_graph_by_target("K_C_V18_2", arcs)
+  target_arcs_strength <- merge(x = target_arcs, arcs_strength_all, by = c("from", "to"))
+
+  results['total_arc'] <- nrow(arcs)
+  results['arc_strength_mean'] <- mean(arcs_strength[, "strength"])
+
+  results['total_target_arc'] <- nrow(target_arcs)
+  results['arc_strength_mean'] <-  mean(target_arcs_strength[, "strength"])
+
+  nodes <- model$dyn.avg$nodes
+  results['avg_mb_size'] <- get_mb_size(nodes)
+  results['avg_nbr_size'] <- get_nbr_size(nodes)
+  results['arc_threshold'] <- model$dyn.avg$learning$args$threshold
+
+  return(results)
 }
 
 

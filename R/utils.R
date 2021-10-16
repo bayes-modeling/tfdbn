@@ -318,8 +318,8 @@ filter_by_correlation <- function(graph, cor_matrix, threshold) {
   remove_arcs <- c()
 
   for(i in 1:nrow(graph)) {
-    from <- graph[i, 1]
-    to <- graph[i, 2]
+    from <- as.character(graph[i, 1])
+    to <- as.character(graph[i, 2])
 
     if(abs(cor_matrix[from, to]) <= threshold) {
 
@@ -570,4 +570,45 @@ get_anomally_kpi <- function(kpi_score, threshold) {
   return(colnames(kpi_score)[which(-1 < kpi_values & kpi_values <= threshold)])
 }
 
+get_group <- function(all_variables){
+  groups <- c()
+  for(variable in all_variables) {
+    elems <- strsplit(variable, "_")[[1]]
+    group <- as.numeric(elems[length(elems)])
+    groups <- c(groups, group)
+  }
+  return(groups)
+}
+
+filter_graph_by_target <- function(target_variable, structure_graph) {
+  arcs <- c()
+  for(i in 1:nrow(structure_graph)) {
+    from_node = structure_graph[i, "from"]
+    to_node = structure_graph[i, "to"]
+    if(grepl(target_variable, from_node) | grepl(target_variable, to_node)) {
+      arcs <- c(arcs, i)
+    }
+  }
+  return(structure_graph[arcs, ])
+}
+
+get_mb_size <- function(nodes) {
+  keys <- names(nodes)
+  mb_sizes <- c()
+  for(key in keys){
+    mb_size <- length(nodes[[key]]$mb)
+    mb_sizes <- c(mb_sizes, mb_size)
+  }
+  return(round(mean(mb_sizes), 2))
+}
+
+get_nbr_size <- function(nodes) {
+  keys <- names(nodes)
+  nbr_sizes <- c()
+  for(key in keys){
+    nbr_size <- length(nodes[[key]]$nbr)
+    nbr_sizes <- c(nbr_sizes, nbr_size)
+  }
+  return(round(mean(nbr_sizes), 2))
+}
 
